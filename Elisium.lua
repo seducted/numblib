@@ -8088,3 +8088,6 @@ getgenv().Library = Library;
 
 return Library;
 end)();
+
+-- Return the library to loadstring callers.
+return Library;
