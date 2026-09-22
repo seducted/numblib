@@ -1,4 +1,3 @@
--- Elisium barebones UI: original UI library only, with feature/gameplay code removed.
 local function LPH_NO_VIRTUALIZE(f) return f end
 local function LPH_JIT_MAX(f) return f end
 local function LPH_JIT(f) return f end
@@ -7058,10 +7057,35 @@ function Library:PlayNotificationSound()
     Sound:Play();
 end;
 
-function Library:Notify(Text, Time)
+-- Notification system
+-- Usage:
+--     Library:Notify("Hello world", 5)
+--     Library:SetNotificationSpot("Bottom Left")
+--     Library:Notify("Hello", 5, "Bottom Left")
+-- Supported positions: Top Right, Top Left, Bottom Right, Bottom Left, Center
+Library.NotificationDefaults = Library.NotificationDefaults or {
+    Duration = 5;
+    Position = Library.NotificationSpot or 'Top Right';
+};
+
+function Library:Notify(Text, Time, Position)
+    if self.NotificationsEnabled == false then
+        return;
+    end;
+
+    Text = tostring(Text or 'Notification');
+
+    if Position then
+        self:SetNotificationSpot(Position);
+        self.NotificationDefaults.Position = Position;
+    elseif self.NotificationDefaults and self.NotificationDefaults.Position then
+        self:SetNotificationSpot(self.NotificationDefaults.Position);
+    end;
+
     Library:PlayNotificationSound();
 
-    local Duration = Time or 5;
+    local Duration = tonumber(Time) or (self.NotificationDefaults and self.NotificationDefaults.Duration) or 5;
+    Duration = math.clamp(Duration, 0.5, 60);
     local TextSize = 13;
     local BarHeight = 2;
     local PadX = 10;
@@ -7159,6 +7183,27 @@ function Library:Notify(Text, Time)
             NotifyOuter:Destroy();
         end);
     end);
+end;
+
+function Library:SetNotificationDefaults(Settings)
+    if type(Settings) ~= 'table' then
+        return self;
+    end;
+
+    if Settings.Duration ~= nil then
+        local Duration = tonumber(Settings.Duration);
+        if Duration then
+            self.NotificationDefaults.Duration = math.clamp(Duration, 0.5, 60);
+        end;
+    end;
+
+    if Settings.Position ~= nil then
+        local Position = tostring(Settings.Position);
+        self:SetNotificationSpot(Position);
+        self.NotificationDefaults.Position = Position;
+    end;
+
+    return self;
 end;
 
 function Library:CreateWindow(...)
