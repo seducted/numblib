@@ -6,7 +6,6 @@ local function LPH_ENCFUNC(f) return f end
 local function getgenv() return _G end
 local function cloneref(ref) return ref end
 
-local Library = (function()
 
 local InputService = game:GetService('UserInputService');
 local TextService = game:GetService('TextService');
@@ -8087,7 +8086,6 @@ Library.Options = Options;
 getgenv().Library = Library;
 
 return Library;
-end)();
 
 -- Return the library to loadstring callers.
 return Library;
