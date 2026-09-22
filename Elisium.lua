@@ -8083,9 +8083,4 @@ Players.PlayerRemoving:Connect(OnPlayerChange);
 Library.Toggles = Toggles;
 Library.Options = Options;
 
-getgenv().Library = Library;
-
-return Library;
-
--- Return the library to loadstring callers.
 return Library;
