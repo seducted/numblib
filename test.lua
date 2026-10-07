@@ -7423,6 +7423,11 @@ function Library:CreateWindow(...)
         Parent = Inner;
     });
 
+    Library:Create('UICorner', {
+        CornerRadius = UDim.new(0, 4);
+        Parent = MainSectionOuter;
+    });
+
     Library:AddToRegistry(MainSectionOuter, {
         BackgroundColor3 = 'BackgroundColor';
         BorderColor3 = 'OutlineColor';
@@ -7436,6 +7441,11 @@ function Library:CreateWindow(...)
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 1;
         Parent = MainSectionOuter;
+    });
+
+    Library:Create('UICorner', {
+        CornerRadius = UDim.new(0, 4);
+        Parent = MainSectionInner;
     });
 
     Library:AddToRegistry(MainSectionInner, {
@@ -7745,9 +7755,15 @@ function Library:CreateWindow(...)
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Library.OutlineColor;
                 BorderMode = Enum.BorderMode.Inset;
+                ClipsDescendants = true;
                 Size = UDim2.new(1, 0, 0, 507 + 2);
                 ZIndex = 6;
                 Parent = Info.Side == 1 and LeftSide or RightSide;
+            });
+
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 4);
+                Parent = BoxOuter;
             });
 
             Library:AddToRegistry(BoxOuter, {
@@ -7758,10 +7774,16 @@ function Library:CreateWindow(...)
             local BoxInner = Library:Create('Frame', {
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Color3.new(0, 0, 0);
+                ClipsDescendants = true;
                 Size = UDim2.new(1, -2, 1, -2);
                 Position = UDim2.new(0, 1, 0, 1);
                 ZIndex = 7;
                 Parent = BoxOuter;
+            });
+
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 3);
+                Parent = BoxInner;
             });
 
             Library:AddToRegistry(BoxInner, {
@@ -7867,9 +7889,15 @@ function Library:CreateWindow(...)
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Library.OutlineColor;
                 BorderMode = Enum.BorderMode.Inset;
+                ClipsDescendants = true;
                 Size = UDim2.new(1, 0, 0, 0);
                 ZIndex = 6;
                 Parent = Info.Side == 1 and LeftSide or RightSide;
+            });
+
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 4);
+                Parent = BoxOuter;
             });
 
             Library:AddToRegistry(BoxOuter, {
@@ -7880,10 +7908,16 @@ function Library:CreateWindow(...)
             local BoxInner = Library:Create('Frame', {
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Color3.new(0, 0, 0);
+                ClipsDescendants = true;
                 Size = UDim2.new(1, -2, 1, -2);
                 Position = UDim2.new(0, 1, 0, 1);
                 ZIndex = 7;
                 Parent = BoxOuter;
+            });
+
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 3);
+                Parent = BoxInner;
             });
 
             Library:AddToRegistry(BoxInner, {
