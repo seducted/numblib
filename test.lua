@@ -250,13 +250,13 @@ local Library = {
 
     HudRegistry = {};
 
-    FontColor = Color3.fromRGB(235,235,238);
-    MainColor = Color3.fromRGB(9,9,11);
-    BackgroundColor = Color3.fromRGB(6,6,8);
-    AccentColor = Color3.fromRGB(232,122,171);
+    FontColor = Color3.fromHex("e0d4d6");
+    MainColor = Color3.fromHex("121212");
+    BackgroundColor = Color3.fromHex("0a0a0a");
+    AccentColor = Color3.fromHex("a65d67");
     OutlineColor = Color3.new(0, 0, 0);
-    SelectedTabColor = Color3.fromRGB(9,9,11);
-    GradientColor = Color3.fromRGB(232,122,171);
+    SelectedTabColor = Color3.fromHex("0a0a0a");
+    GradientColor = Color3.fromHex("6b3038");
     ShadowColor = Color3.new(0, 0, 0);
     ShadowSize = 0;
     ShadowOffset = 0;
@@ -1411,7 +1411,6 @@ function Library:UpdateFooter()
         username
     );
 
-    -- This is the original Elisium footer text, simply moved to the title row.
     Library.FooterRight.RichText = true;
     Library.FooterRight.TextTransparency = 0;
     Library.FooterRight.Text = string.format(
@@ -6079,11 +6078,21 @@ do
             BorderColor3 = Color3.new(0, 0, 0);
             ZIndex = 20;
             Visible = false;
+            ClipsDescendants = false;
             Parent = ScreenGui;
         });
 
         local function RecalculateListPosition()
-            ListOuter.Position = UDim2.fromOffset(DropdownOuter.AbsolutePosition.X, DropdownOuter.AbsolutePosition.Y + DropdownOuter.Size.Y.Offset + 1);
+            local dropdownPos = DropdownOuter.AbsolutePosition;
+            local dropdownSize = DropdownOuter.AbsoluteSize;
+
+            -- The popup is parented directly to ScreenGui, so it intentionally
+            -- ignores the section/groupbox bounds and can extend below them.
+            -- Keep it anchored underneath the dropdown at all times.
+            ListOuter.Position = UDim2.fromOffset(
+                dropdownPos.X,
+                dropdownPos.Y + dropdownSize.Y + 1
+            );
         end;
 
         local function RecalculateListSize(YSize)
@@ -7273,7 +7282,7 @@ function Library:CreateWindow(...)
     local Inner = Library:Create('Frame', {
         BackgroundColor3 = Library.MainColor;
         BorderSizePixel = 0;
-        ClipsDescendants = true;
+        ClipsDescendants = false;
         Size = UDim2.new(1, 0, 1, 0);
         ZIndex = 1;
         Parent = Outer;
@@ -7281,12 +7290,6 @@ function Library:CreateWindow(...)
 
     Library:AddToRegistry(Inner, {
         BackgroundColor3 = 'MainColor';
-    });
-
-    -- Gui-to-Lua uses a 4px UICorner for the main window.
-    Library:Create('UICorner', {
-        CornerRadius = UDim.new(0, 4);
-        Parent = Inner;
     });
 
     do
@@ -7367,9 +7370,9 @@ function Library:CreateWindow(...)
     local AnimatedTopBar = Library:Create('Frame', {
         BackgroundColor3 = Library.AccentColor;
         BorderSizePixel = 0;
-        Position = UDim2.new(0, 10, 0, 1);
-        Size = UDim2.new(1, -20, 0, 2);
-        ZIndex = 20;
+        Position = UDim2.new(0, 0, 0, 0);
+        Size = UDim2.new(1, 0, 0, 2);
+        ZIndex = 5;
         Parent = Inner;
     });
 
@@ -7378,30 +7381,14 @@ function Library:CreateWindow(...)
     });
 
     local WindowLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 16, 0, 7);
-        Size = UDim2.new(0.45, 0, 0, 22);
+        Position = UDim2.new(0, 8, 0, 4);
+        Size = UDim2.new(1, -16, 0, 22);
         Text = "";
-        TextSize = 13;
+        TextSize = 15;
         TextXAlignment = Enum.TextXAlignment.Left;
         ZIndex = 6;
         Parent = Inner;
     });
-
-    -- Original Elisium footer-right label, moved to the top-right title row.
-    -- The text/value itself is unchanged; only its position is changed.
-    local FooterRight = Library:CreateLabel({
-        Position = UDim2.new(0.55, 0, 0, 7);
-        Size = UDim2.new(0.45, -16, 0, 22);
-        Text = '';
-        TextSize = 12;
-        RichText = true;
-        TextXAlignment = Enum.TextXAlignment.Right;
-        TextYAlignment = Enum.TextYAlignment.Center;
-        ZIndex = 30;
-        Parent = Inner;
-    });
-
-    Library.FooterRight = FooterRight;
 
     local AccentPart = Config.AccentPart or '.lol';
 
@@ -7445,16 +7432,16 @@ function Library:CreateWindow(...)
     local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
         ClipsDescendants = false;
-        Position = UDim2.new(0, 24, 0, 6);
-        Size = UDim2.new(1, -48, 0, 30);
-        ZIndex = 20;
+        Position = UDim2.new(0, 12, 0, 6);
+        Size = UDim2.new(1, -24, 0, 22);
+        ZIndex = 1;
         Parent = MainSectionInner;
     });
 
     Window.TabArea = TabArea;
     Window.TabPadding = Config.TabPadding;
     Window.TabEntries = {};
-    Window.TabTextSize = 12;
+    Window.TabTextSize = 16;
 
     local TabListLayout = Library:Create('UIListLayout', {
         Padding = UDim.new(0, Config.TabPadding);
@@ -7480,10 +7467,10 @@ function Library:CreateWindow(...)
             return
         end;
 
-        local Padding = 8;
-        local SidePadding = 8;
-        local BaseTextSize = self.TabTextSize or 12;
-        local MinTextSize = 10;
+        local Padding = self.TabPadding or 10;
+        local SidePadding = 12;
+        local BaseTextSize = self.TabTextSize or 16;
+        local MinTextSize = 11;
 
         local TotalPadding = Padding * (Count - 1);
         local EqualWidth = math.max(24, math.floor((AreaWidth - TotalPadding) / Count));
@@ -7546,8 +7533,18 @@ function Library:CreateWindow(...)
         Parent = Inner;
     });
 
-    Library.FooterLeft = FooterLeft;
+    local FooterRight = Library:CreateLabel({
+        Position = UDim2.new(0.5, 0, 1, -18);
+        Size = UDim2.new(0.5, -10, 0, 14);
+        Text = '';
+        TextSize = 12;
+        TextXAlignment = Enum.TextXAlignment.Right;
+        ZIndex = 6;
+        Parent = Inner;
+    });
 
+    Library.FooterLeft = FooterLeft;
+    Library.FooterRight = FooterRight;
     Library:UpdateFooter();
 
     Library:AddToRegistry(TabContainer, {
@@ -7591,25 +7588,13 @@ function Library:CreateWindow(...)
         });
 
         local TabButtonLabel = Library:CreateLabel({
-            Position = UDim2.new(0, 0, 0, 4);
-            Size = UDim2.new(1, 0, 0, 24);
+            Position = UDim2.new(0, 0, 0, 0);
+            Size = UDim2.new(1, 0, 1, 0);
             Text = Name;
-            TextSize = Window.TabTextSize or 12;
-            TextColor3 = Color3.fromRGB(135, 135, 140);
-            TextTransparency = 0;
-            TextXAlignment = Enum.TextXAlignment.Center;
-            TextYAlignment = Enum.TextYAlignment.Center;
-            ZIndex = 24;
-            Parent = TabButton;
-        });
-
-        local InactiveUnderline = Library:Create('Frame', {
-            AnchorPoint = Vector2.new(0, 1);
-            BackgroundColor3 = Color3.fromRGB(105, 105, 110);
-            BorderSizePixel = 0;
-            Position = UDim2.new(0, 0, 1, 0);
-            Size = UDim2.new(1, 0, 0, 1);
-            ZIndex = 21;
+            TextSize = Window.TabTextSize or 16;
+            TextColor3 = Color3.new(1, 1, 1);
+            TextTransparency = 0.35;
+            ZIndex = 3;
             Parent = TabButton;
         });
 
@@ -7628,15 +7613,13 @@ function Library:CreateWindow(...)
         end);
 
         local TabGlow, TabUnderline = Library:CreateTabBottomGlow(TabButton, {
-            GlowHeight = 0;
+            GlowHeight = 18;
             LineHeight = 2;
-            ZIndex = 23;
+            ZIndex = 1;
         });
 
         Tab.TabGlow = TabGlow;
         Tab.TabUnderline = TabUnderline;
-        Tab.InactiveUnderline = InactiveUnderline;
-        Tab.IsActive = false;
 
         local TabFrame = Library:Create('Frame', {
             Name = 'TabFrame',
@@ -7708,9 +7691,6 @@ function Library:CreateWindow(...)
                 Tab:HideTab();
             end;
 
-            Tab.IsActive = true;
-            InactiveUnderline.BackgroundColor3 = Library.AccentColor;
-            TabButtonLabel.TextColor3 = Library.AccentColor;
             Library:SetTabGlowVisible(TabGlow, TabUnderline, true);
             TabButtonLabel.TextTransparency = 0;
             TabFrame.Visible = true;
@@ -7723,11 +7703,8 @@ function Library:CreateWindow(...)
         end;
 
         function Tab:HideTab()
-            Tab.IsActive = false;
-            InactiveUnderline.BackgroundColor3 = Color3.fromRGB(105, 105, 110);
-            TabButtonLabel.TextColor3 = Color3.fromRGB(135, 135, 140);
             Library:SetTabGlowVisible(TabGlow, TabUnderline, false);
-            TabButtonLabel.TextTransparency = 0;
+            TabButtonLabel.TextTransparency = 0.35;
             TabFrame.Visible = false;
         end;
 
@@ -8059,24 +8036,6 @@ function Library:CreateWindow(...)
         function Tab:AddRightTabbox(Name)
             return Tab:AddTabbox({ Name = Name, Side = 2; });
         end;
-
-        local HOVER_COLOR = Color3.fromRGB(232, 122, 171);
-        local INACTIVE_COLOR = Color3.fromRGB(105, 105, 110);
-        local INACTIVE_TEXT = Color3.fromRGB(135, 135, 140);
-
-        TabButton.MouseEnter:Connect(function()
-            if not Tab.IsActive then
-                TabButtonLabel.TextColor3 = HOVER_COLOR;
-                InactiveUnderline.BackgroundColor3 = HOVER_COLOR;
-            end;
-        end);
-
-        TabButton.MouseLeave:Connect(function()
-            if not Tab.IsActive then
-                TabButtonLabel.TextColor3 = INACTIVE_TEXT;
-                InactiveUnderline.BackgroundColor3 = INACTIVE_COLOR;
-            end;
-        end);
 
         TabButton.MouseButton1Click:Connect(function()
             Tab:ShowTab();
