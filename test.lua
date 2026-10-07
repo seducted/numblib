@@ -250,13 +250,13 @@ local Library = {
 
     HudRegistry = {};
 
-    FontColor = Color3.fromRGB(235, 235, 238);
-    MainColor = Color3.fromRGB(9, 9, 11);
-    BackgroundColor = Color3.fromRGB(6, 6, 8);
-    AccentColor = Color3.fromRGB(232, 122, 171);
+    FontColor = Color3.fromRGB(235,235,238);
+    MainColor = Color3.fromRGB(9,9,11);
+    BackgroundColor = Color3.fromRGB(6,6,8);
+    AccentColor = Color3.fromRGB(232,122,171);
     OutlineColor = Color3.new(0, 0, 0);
-    SelectedTabColor = Color3.fromRGB(9, 9, 11);
-    GradientColor = Color3.fromRGB(232, 122, 171);
+    SelectedTabColor = Color3.fromRGB(9,9,11);
+    GradientColor = Color3.fromRGB(232,122,171);
     ShadowColor = Color3.new(0, 0, 0);
     ShadowSize = 0;
     ShadowOffset = 0;
@@ -271,7 +271,7 @@ local Library = {
     CustomUIFonts = CUSTOM_UI_FONTS;
 
     OverlayGlowEnabled = false;
-    OverlayGlowColor = Color3.fromRGB(232, 122, 171);
+    OverlayGlowColor = Color3.fromHex('a65d67');
 
     OpenedFrames = {};
     DependencyBoxes = {};
@@ -7282,11 +7282,6 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'MainColor';
     });
 
-    Library:Create('UICorner', {
-        CornerRadius = UDim.new(0, 10);
-        Parent = Inner;
-    });
-
     do
         local UIS = game:GetService('UserInputService');
         local MINW, MINH = 340, 300;
@@ -7363,10 +7358,10 @@ function Library:CreateWindow(...)
     Window.GlowLayers = Library:CreateOverlayGlowLayers(Inner, 1);
 
     local AnimatedTopBar = Library:Create('Frame', {
-        BackgroundTransparency = 1;
+        BackgroundColor3 = Library.AccentColor;
         BorderSizePixel = 0;
-        Position = UDim2.new(0, 0, 0, 0);
-        Size = UDim2.new(1, 0, 0, 2);
+        Position = UDim2.new(0, 10, 0, 1);
+        Size = UDim2.new(1, -20, 0, 2);
         ZIndex = 20;
         Parent = Inner;
     });
@@ -7381,8 +7376,7 @@ function Library:CreateWindow(...)
         Text = "";
         TextSize = 13;
         TextXAlignment = Enum.TextXAlignment.Left;
-        RichText = true;
-        ZIndex = 21;
+        ZIndex = 6;
         Parent = Inner;
     });
 
@@ -7429,7 +7423,7 @@ function Library:CreateWindow(...)
         BackgroundTransparency = 1;
         ClipsDescendants = false;
         Position = UDim2.new(0, 24, 0, 6);
-        Size = UDim2.new(1, -48, 0, 28);
+        Size = UDim2.new(1, -48, 0, 30);
         ZIndex = 20;
         Parent = MainSectionInner;
     });
@@ -7578,13 +7572,13 @@ function Library:CreateWindow(...)
             AutoButtonColor = false;
             Size = UDim2.new(0, 0, 1, 0);
             Text = '';
-            ZIndex = 22;
+            ZIndex = 2;
             LayoutOrder = defaultLayoutOrder;
             Parent = TabArea;
         });
 
         local TabButtonLabel = Library:CreateLabel({
-            Position = UDim2.new(0, 0, 0, 0);
+            Position = UDim2.new(0, 0, 0, 4);
             Size = UDim2.new(1, 0, 0, 24);
             Text = Name;
             TextSize = Window.TabTextSize or 12;
@@ -7621,9 +7615,9 @@ function Library:CreateWindow(...)
         end);
 
         local TabGlow, TabUnderline = Library:CreateTabBottomGlow(TabButton, {
-            GlowHeight = 8;
+            GlowHeight = 0;
             LineHeight = 2;
-            ZIndex = 22;
+            ZIndex = 23;
         });
 
         Tab.TabGlow = TabGlow;
@@ -7703,7 +7697,7 @@ function Library:CreateWindow(...)
 
             Tab.IsActive = true;
             InactiveUnderline.BackgroundColor3 = Library.AccentColor;
-            TabButtonLabel.TextColor3 = Library.FontColor;
+            TabButtonLabel.TextColor3 = Library.AccentColor;
             Library:SetTabGlowVisible(TabGlow, TabUnderline, true);
             TabButtonLabel.TextTransparency = 0;
             TabFrame.Visible = true;
@@ -8061,8 +8055,6 @@ function Library:CreateWindow(...)
             if not Tab.IsActive then
                 TabButtonLabel.TextColor3 = HOVER_COLOR;
                 InactiveUnderline.BackgroundColor3 = HOVER_COLOR;
-                TabGlow.Visible = true;
-                TabGlow.BackgroundTransparency = 0.15;
             end;
         end);
 
@@ -8070,7 +8062,6 @@ function Library:CreateWindow(...)
             if not Tab.IsActive then
                 TabButtonLabel.TextColor3 = INACTIVE_TEXT;
                 InactiveUnderline.BackgroundColor3 = INACTIVE_COLOR;
-                TabGlow.Visible = false;
             end;
         end);
 
