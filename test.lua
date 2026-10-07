@@ -7380,6 +7380,37 @@ function Library:CreateWindow(...)
         Parent = Inner;
     });
 
+    -- Current game/place name, aligned with the window title on the top-right.
+    local GameLabel = Library:CreateLabel({
+        Position = UDim2.new(0.55, 0, 0, 7);
+        Size = UDim2.new(0.45, -16, 0, 22);
+        Text = "";
+        TextSize = 12;
+        TextColor3 = Library.AccentColor;
+        TextXAlignment = Enum.TextXAlignment.Right;
+        TextYAlignment = Enum.TextYAlignment.Center;
+        ZIndex = 6;
+        Parent = Inner;
+    });
+
+    Library:AddToRegistry(GameLabel, {
+        TextColor3 = 'AccentColor';
+    });
+
+    local function UpdateGameLabel()
+        local gameName = game.Name;
+        pcall(function()
+            local MarketplaceService = game:GetService('MarketplaceService');
+            local info = MarketplaceService:GetProductInfo(game.PlaceId);
+            if info and info.Name and info.Name ~= '' then
+                gameName = info.Name;
+            end;
+        end);
+        GameLabel.Text = gameName;
+    end;
+
+    UpdateGameLabel();
+
     local AccentPart = Config.AccentPart or '.lol';
 
     local function UpdateTitle()
