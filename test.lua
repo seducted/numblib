@@ -7283,6 +7283,12 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'MainColor';
     });
 
+    -- Gui-to-Lua style rounded window surface.
+    Library:Create('UICorner', {
+        CornerRadius = UDim.new(0, 10);
+        Parent = Inner;
+    });
+
     do
         local UIS = game:GetService('UserInputService');
         local MINW, MINH = 340, 300;
@@ -7422,6 +7428,11 @@ function Library:CreateWindow(...)
         BorderColor3 = 'OutlineColor';
     });
 
+    Library:Create('UICorner', {
+        CornerRadius = UDim.new(0, 8);
+        Parent = MainSectionOuter;
+    });
+
     local MainSectionInner = Library:Create('Frame', {
         BackgroundColor3 = Library.BackgroundColor;
         BorderColor3 = Color3.new(0, 0, 0);
@@ -7434,6 +7445,11 @@ function Library:CreateWindow(...)
 
     Library:AddToRegistry(MainSectionInner, {
         BackgroundColor3 = 'BackgroundColor';
+    });
+
+    Library:Create('UICorner', {
+        CornerRadius = UDim.new(0, 7);
+        Parent = MainSectionInner;
     });
 
     local TabArea = Library:Create('Frame', {
@@ -7749,6 +7765,11 @@ function Library:CreateWindow(...)
                 BorderColor3 = 'OutlineColor';
             });
 
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 7);
+                Parent = BoxOuter;
+            });
+
             local BoxInner = Library:Create('Frame', {
                 BackgroundColor3 = Library.BackgroundColor;
                 BorderColor3 = Color3.new(0, 0, 0);
@@ -7869,6 +7890,11 @@ function Library:CreateWindow(...)
             Library:AddToRegistry(BoxOuter, {
                 BackgroundColor3 = 'BackgroundColor';
                 BorderColor3 = 'OutlineColor';
+            });
+
+            Library:Create('UICorner', {
+                CornerRadius = UDim.new(0, 7);
+                Parent = BoxOuter;
             });
 
             local BoxInner = Library:Create('Frame', {
