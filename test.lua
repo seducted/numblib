@@ -7363,7 +7363,7 @@ function Library:CreateWindow(...)
     Window.GlowLayers = Library:CreateOverlayGlowLayers(Inner, 1);
 
     local AnimatedTopBar = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
+        BackgroundTransparency = 1;
         BorderSizePixel = 0;
         Position = UDim2.new(0, 0, 0, 0);
         Size = UDim2.new(1, 0, 0, 2);
@@ -7428,7 +7428,7 @@ function Library:CreateWindow(...)
     local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
         ClipsDescendants = false;
-        Position = UDim2.new(0, 24, 0, 48);
+        Position = UDim2.new(0, 24, 0, 6);
         Size = UDim2.new(1, -48, 0, 28);
         ZIndex = 20;
         Parent = MainSectionInner;
@@ -7463,7 +7463,7 @@ function Library:CreateWindow(...)
             return
         end;
 
-        local Padding = self.TabPadding or 10;
+        local Padding = 8;
         local SidePadding = 8;
         local BaseTextSize = self.TabTextSize or 12;
         local MinTextSize = 10;
@@ -7596,6 +7596,16 @@ function Library:CreateWindow(...)
             Parent = TabButton;
         });
 
+        local InactiveUnderline = Library:Create('Frame', {
+            AnchorPoint = Vector2.new(0, 1);
+            BackgroundColor3 = Color3.fromRGB(105, 105, 110);
+            BorderSizePixel = 0;
+            Position = UDim2.new(0, 0, 1, 0);
+            Size = UDim2.new(1, 0, 0, 1);
+            ZIndex = 21;
+            Parent = TabButton;
+        });
+
         Tab.TabButton = TabButton;
         Tab.TabButtonLabel = TabButtonLabel;
         Tab.Name = Name;
@@ -7610,18 +7620,6 @@ function Library:CreateWindow(...)
             Window:UpdateTabLayout();
         end);
 
-        -- GUI-to-Lua style navbar: a thin muted line under every tab,
-        -- with the existing Elisium active-tab line/glow layered above it.
-        local TabInactiveLine = Library:Create('Frame', {
-            AnchorPoint = Vector2.new(0, 1);
-            BackgroundColor3 = Color3.fromRGB(105, 105, 110);
-            BorderSizePixel = 0;
-            Position = UDim2.new(0, 0, 1, 0);
-            Size = UDim2.new(1, 0, 0, 1);
-            ZIndex = 21;
-            Parent = TabButton;
-        });
-
         local TabGlow, TabUnderline = Library:CreateTabBottomGlow(TabButton, {
             GlowHeight = 8;
             LineHeight = 2;
@@ -7630,7 +7628,8 @@ function Library:CreateWindow(...)
 
         Tab.TabGlow = TabGlow;
         Tab.TabUnderline = TabUnderline;
-        Tab.TabInactiveLine = TabInactiveLine;
+        Tab.InactiveUnderline = InactiveUnderline;
+        Tab.IsActive = false;
 
         local TabFrame = Library:Create('Frame', {
             Name = 'TabFrame',
@@ -7702,9 +7701,10 @@ function Library:CreateWindow(...)
                 Tab:HideTab();
             end;
 
-            Library:SetTabGlowVisible(TabGlow, TabUnderline, true);
-            TabInactiveLine.BackgroundColor3 = Library.AccentColor;
+            Tab.IsActive = true;
+            InactiveUnderline.BackgroundColor3 = Library.AccentColor;
             TabButtonLabel.TextColor3 = Library.FontColor;
+            Library:SetTabGlowVisible(TabGlow, TabUnderline, true);
             TabButtonLabel.TextTransparency = 0;
             TabFrame.Visible = true;
 
@@ -7716,9 +7716,10 @@ function Library:CreateWindow(...)
         end;
 
         function Tab:HideTab()
-            Library:SetTabGlowVisible(TabGlow, TabUnderline, false);
-            TabInactiveLine.BackgroundColor3 = Color3.fromRGB(105, 105, 110);
+            Tab.IsActive = false;
+            InactiveUnderline.BackgroundColor3 = Color3.fromRGB(105, 105, 110);
             TabButtonLabel.TextColor3 = Color3.fromRGB(135, 135, 140);
+            Library:SetTabGlowVisible(TabGlow, TabUnderline, false);
             TabButtonLabel.TextTransparency = 0;
             TabFrame.Visible = false;
         end;
@@ -8051,6 +8052,27 @@ function Library:CreateWindow(...)
         function Tab:AddRightTabbox(Name)
             return Tab:AddTabbox({ Name = Name, Side = 2; });
         end;
+
+        local HOVER_COLOR = Color3.fromRGB(232, 122, 171);
+        local INACTIVE_COLOR = Color3.fromRGB(105, 105, 110);
+        local INACTIVE_TEXT = Color3.fromRGB(135, 135, 140);
+
+        TabButton.MouseEnter:Connect(function()
+            if not Tab.IsActive then
+                TabButtonLabel.TextColor3 = HOVER_COLOR;
+                InactiveUnderline.BackgroundColor3 = HOVER_COLOR;
+                TabGlow.Visible = true;
+                TabGlow.BackgroundTransparency = 0.15;
+            end;
+        end);
+
+        TabButton.MouseLeave:Connect(function()
+            if not Tab.IsActive then
+                TabButtonLabel.TextColor3 = INACTIVE_TEXT;
+                InactiveUnderline.BackgroundColor3 = INACTIVE_COLOR;
+                TabGlow.Visible = false;
+            end;
+        end);
 
         TabButton.MouseButton1Click:Connect(function()
             Tab:ShowTab();
