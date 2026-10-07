@@ -7591,7 +7591,7 @@ function Library:CreateWindow(...)
         });
 
         local TabButtonLabel = Library:CreateLabel({
-            Position = UDim2.new(0, 0, 0, 7);
+            Position = UDim2.new(0, 0, 0, 4);
             Size = UDim2.new(1, 0, 0, 24);
             Text = Name;
             TextSize = Window.TabTextSize or 12;
