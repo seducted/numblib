@@ -7389,7 +7389,7 @@ function Library:CreateWindow(...)
         TextColor3 = Library.AccentColor;
         TextXAlignment = Enum.TextXAlignment.Right;
         TextYAlignment = Enum.TextYAlignment.Center;
-        ZIndex = 6;
+        ZIndex = 30;
         Parent = Inner;
     });
 
@@ -7406,7 +7406,7 @@ function Library:CreateWindow(...)
                 gameName = info.Name;
             end;
         end);
-        GameLabel.Text = gameName;
+        GameLabel.Text = '[UP] ' .. tostring(gameName);
     end;
 
     UpdateGameLabel();
