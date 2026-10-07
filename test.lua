@@ -7428,8 +7428,8 @@ function Library:CreateWindow(...)
     local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
         ClipsDescendants = false;
-        Position = UDim2.new(0, 12, 0, 6);
-        Size = UDim2.new(1, -24, 0, 22);
+        Position = UDim2.new(0, 24, 0, 48);
+        Size = UDim2.new(1, -48, 0, 28);
         ZIndex = 20;
         Parent = MainSectionInner;
     });
@@ -7578,19 +7578,21 @@ function Library:CreateWindow(...)
             AutoButtonColor = false;
             Size = UDim2.new(0, 0, 1, 0);
             Text = '';
-            ZIndex = 2;
+            ZIndex = 22;
             LayoutOrder = defaultLayoutOrder;
             Parent = TabArea;
         });
 
         local TabButtonLabel = Library:CreateLabel({
             Position = UDim2.new(0, 0, 0, 0);
-            Size = UDim2.new(1, 0, 1, 0);
+            Size = UDim2.new(1, 0, 0, 24);
             Text = Name;
-            TextSize = Window.TabTextSize or 16;
-            TextColor3 = Color3.new(1, 1, 1);
-            TextTransparency = 0.35;
-            ZIndex = 3;
+            TextSize = Window.TabTextSize or 12;
+            TextColor3 = Color3.fromRGB(135, 135, 140);
+            TextTransparency = 0;
+            TextXAlignment = Enum.TextXAlignment.Center;
+            TextYAlignment = Enum.TextYAlignment.Center;
+            ZIndex = 24;
             Parent = TabButton;
         });
 
@@ -7608,14 +7610,27 @@ function Library:CreateWindow(...)
             Window:UpdateTabLayout();
         end);
 
+        -- GUI-to-Lua style navbar: a thin muted line under every tab,
+        -- with the existing Elisium active-tab line/glow layered above it.
+        local TabInactiveLine = Library:Create('Frame', {
+            AnchorPoint = Vector2.new(0, 1);
+            BackgroundColor3 = Color3.fromRGB(105, 105, 110);
+            BorderSizePixel = 0;
+            Position = UDim2.new(0, 0, 1, 0);
+            Size = UDim2.new(1, 0, 0, 1);
+            ZIndex = 21;
+            Parent = TabButton;
+        });
+
         local TabGlow, TabUnderline = Library:CreateTabBottomGlow(TabButton, {
-            GlowHeight = 12;
-            LineHeight = 1;
-            ZIndex = 1;
+            GlowHeight = 8;
+            LineHeight = 2;
+            ZIndex = 22;
         });
 
         Tab.TabGlow = TabGlow;
         Tab.TabUnderline = TabUnderline;
+        Tab.TabInactiveLine = TabInactiveLine;
 
         local TabFrame = Library:Create('Frame', {
             Name = 'TabFrame',
@@ -7688,6 +7703,8 @@ function Library:CreateWindow(...)
             end;
 
             Library:SetTabGlowVisible(TabGlow, TabUnderline, true);
+            TabInactiveLine.BackgroundColor3 = Library.AccentColor;
+            TabButtonLabel.TextColor3 = Library.FontColor;
             TabButtonLabel.TextTransparency = 0;
             TabFrame.Visible = true;
 
@@ -7700,7 +7717,9 @@ function Library:CreateWindow(...)
 
         function Tab:HideTab()
             Library:SetTabGlowVisible(TabGlow, TabUnderline, false);
-            TabButtonLabel.TextTransparency = 0.35;
+            TabInactiveLine.BackgroundColor3 = Color3.fromRGB(105, 105, 110);
+            TabButtonLabel.TextColor3 = Color3.fromRGB(135, 135, 140);
+            TabButtonLabel.TextTransparency = 0;
             TabFrame.Visible = false;
         end;
 
