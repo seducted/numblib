@@ -1393,7 +1393,7 @@ function Library:UpdateMenuBlur()
 end;
 
 function Library:UpdateFooter()
-    if not Library.FooterLeft then
+    if not Library.FooterLeft or not Library.FooterRight then
         return
     end;
 
@@ -1411,9 +1411,16 @@ function Library:UpdateFooter()
         username
     );
 
-    if Library.UpdateGameLabel then
-        Library.UpdateGameLabel();
-    end;
+    -- This is the original Elisium footer text, simply moved to the title row.
+    Library.FooterRight.RichText = true;
+    Library.FooterRight.TextTransparency = 0;
+    Library.FooterRight.Text = string.format(
+        '<font color="#%s">[ </font><font color="#%s">%s</font><font color="#%s"> ]</font>',
+        greyHex,
+        accentHex,
+        placeName,
+        greyHex
+    );
 end;
 
 function Library:GetKeybindRowZBase()
@@ -7374,11 +7381,12 @@ function Library:CreateWindow(...)
         Parent = Inner;
     });
 
-    -- Current game/place name, aligned with the window title on the top-right.
-    local GameLabel = Library:CreateLabel({
+    -- Original Elisium footer-right label, moved to the top-right title row.
+    -- The text/value itself is unchanged; only its position is changed.
+    local FooterRight = Library:CreateLabel({
         Position = UDim2.new(0.55, 0, 0, 7);
         Size = UDim2.new(0.45, -16, 0, 22);
-        Text = "";
+        Text = '';
         TextSize = 12;
         RichText = true;
         TextXAlignment = Enum.TextXAlignment.Right;
@@ -7387,44 +7395,7 @@ function Library:CreateWindow(...)
         Parent = Inner;
     });
 
-    local function UpdateGameLabel()
-        -- Use the EXPERIENCE / GAME name, not the individual Place name.
-        -- PlaceId can return a place name such as "Just a baseplate." even
-        -- when the actual Roblox experience has a different name.
-        local gameName = game.Name;
-        pcall(function()
-            local MarketplaceService = game:GetService('MarketplaceService');
-            local info = MarketplaceService:GetProductInfo(game.GameId, Enum.InfoType.Game);
-            if info and info.Name and info.Name ~= '' then
-                gameName = info.Name;
-            end;
-        end);
-
-        -- Fallback to the Place name only if the experience lookup failed.
-        if not gameName or gameName == '' then
-            pcall(function()
-                local MarketplaceService = game:GetService('MarketplaceService');
-                local info = MarketplaceService:GetProductInfo(game.PlaceId, Enum.InfoType.Asset);
-                if info and info.Name and info.Name ~= '' then
-                    gameName = info.Name;
-                end;
-            end);
-        end;
-
-        local safeName = tostring(gameName):gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;');
-        local greyHex = '828282';
-        local accentHex = Library.AccentColor:ToHex();
-        GameLabel.Text = string.format(
-            '<font color="#%s">[ </font><font color="#%s">%s</font><font color="#%s"> ]</font>',
-            greyHex,
-            accentHex,
-            safeName,
-            greyHex
-        );
-    end;
-
-    Library.UpdateGameLabel = UpdateGameLabel;
-    UpdateGameLabel();
+    Library.FooterRight = FooterRight;
 
     local AccentPart = Config.AccentPart or '.lol';
 
@@ -7571,8 +7542,6 @@ function Library:CreateWindow(...)
 
     Library.FooterLeft = FooterLeft;
 
-    -- The game name is displayed in the top-right title row instead.
-    Library.FooterRight = nil;
     Library:UpdateFooter();
 
     Library:AddToRegistry(TabContainer, {
