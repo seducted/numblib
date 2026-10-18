@@ -278,6 +278,22 @@ local Library = {
     Overlays = {};
     EnemyPlayers = {};
     AllCloseOverlays = false;
+    KeepOverlaysOpen = false;
+    OverlayTitleAccent = false;
+    OverlayTitleColor = Color3.new(1, 1, 1);
+    WatermarkName = 'Elisium.lol';
+    WatermarkFullAccent = false;
+    OverlaysLocked = false;
+    OverlaySnapEnabled = true;
+    OverlaySnapDistance = 14;
+    Folder = 'Elisium';
+    MenuBindPickers = {};
+    UnloadCallbacks = {};
+    NotificationColors = {
+        Success = Color3.fromRGB(95, 220, 125);
+        Warning = Color3.fromRGB(255, 195, 70);
+        Error = Color3.fromRGB(255, 85, 85);
+    };
     MenuOpen = true;
     NotificationSpot = 'Top Right';
     NotificationAnimation = 'Slide Right to Left';
@@ -362,10 +378,10 @@ function Library:SafeCallback(f, ...)
         local _, i = event:find(":%d+: ");
 
         if not i then
-            return Library:Notify(event);
+            return Library:Notify(event, nil, nil, 'Error');
         end;
 
-        return Library:Notify(event:sub(i + 1), 3);
+        return Library:Notify(event:sub(i + 1), 3, nil, 'Error');
     end;
 end;
 
@@ -442,7 +458,7 @@ function Library:CreateLabel(Properties, IsHud)
     return Library:Create(_Instance, Properties);
 end;
 
-function Library:MakeDraggable(Instance, Cutoff)
+function Library:MakeDraggable(Instance, Cutoff, Hooks)
     Instance.Active = true;
     local CutoffHeight = Cutoff or 40;
 
@@ -456,6 +472,8 @@ function Library:MakeDraggable(Instance, Cutoff)
         if not IsPrimaryPress(Input) then return end;
 
         if Dragging then return end;
+
+        if Hooks and Hooks.CanDrag and not Hooks.CanDrag() then return end;
 
         local Pointer = GetPointerPosition(Input);
 
@@ -484,23 +502,29 @@ function Library:MakeDraggable(Instance, Cutoff)
         });
     end);
 
-    InputService.InputChanged:Connect(LPH_NO_VIRTUALIZE(function(Input)
+    Library:GiveSignal(InputService.InputChanged:Connect(LPH_NO_VIRTUALIZE(function(Input)
         if not Dragging or not DragPreview then return end;
 
         if Input == DragInput or (Input.UserInputType == Enum.UserInputType.MouseMovement and DragInput.UserInputType == Enum.UserInputType.MouseButton1) then
             local Current = GetPointerPosition(Input);
             local Delta = Current - DragStart;
 
-            DragPreview.Position = UDim2.new(
+            local NewPosition = UDim2.new(
                 StartPos.X.Scale,
                 StartPos.X.Offset + Delta.X,
                 StartPos.Y.Scale,
                 StartPos.Y.Offset + Delta.Y
             );
-        end;
-    end));
 
-    InputService.InputEnded:Connect(function(Input)
+            if Hooks and Hooks.Adjust then
+                NewPosition = Hooks.Adjust(NewPosition) or NewPosition;
+            end;
+
+            DragPreview.Position = NewPosition;
+        end;
+    end)));
+
+    Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
         if not Dragging or not DragPreview then return end;
 
         if Input == DragInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and DragInput.UserInputType == Enum.UserInputType.MouseButton1) then
@@ -511,8 +535,12 @@ function Library:MakeDraggable(Instance, Cutoff)
 
             DragPreview:Destroy();
             DragPreview = nil;
+
+            if Hooks and Hooks.OnEnd then
+                Hooks.OnEnd();
+            end;
         end;
-    end);
+    end));
 end;
 
 function Library:AddToolTip(InfoStr, HoverInstance)
@@ -934,7 +962,7 @@ function Library:UpdateColorsUsingRegistry()
     Library:UpdateScrollBars();
 
     if Library.LastWatermarkText and Library.WatermarkText then
-        Library:SetAccentTitle(Library.WatermarkText, Library.LastWatermarkText, Library.WatermarkAccentPart or '.lol');
+        Library:SetAccentTitle(Library.WatermarkText, Library.LastWatermarkText, Library:GetWatermarkAccentPart(Library.LastWatermarkText));
     end;
 
     for _, overlay in next, Library.Overlays do
@@ -1188,6 +1216,33 @@ function Library:UpdateAllGradientTexts()
             end;
         end;
     end;
+end;
+
+function Library:SetPlainTitle(Label, Text, Color)
+    if not Label then
+        return
+    end;
+
+    for idx = #Library.AccentTitleLabels, 1, -1 do
+        if Library.AccentTitleLabels[idx].Label == Label then
+            table.remove(Library.AccentTitleLabels, idx);
+        end;
+    end;
+
+    for idx = #Library.GradientLabels, 1, -1 do
+        if Library.GradientLabels[idx] == Label then
+            table.remove(Library.GradientLabels, idx);
+        end;
+    end;
+
+    local gradient = Label:FindFirstChild('ElisiumTextGradient');
+    if gradient then
+        gradient:Destroy();
+    end;
+
+    Label.RichText = false;
+    Label.Text = Text or '';
+    Label.TextColor3 = Color or Color3.new(1, 1, 1);
 end;
 
 function Library:FormatAccentTitle(Title, AccentPart)
@@ -1589,26 +1644,46 @@ function Library:SetAllCloseEnabled(Enabled)
     end;
 end;
 
+function Library:SetKeepOverlaysOpen(Enabled)
+    Library.KeepOverlaysOpen = not not Enabled;
+end;
+
+function Library:GetOverlayIntent(Overlay)
+    if Overlay._HiddenByMenu and not Overlay.Visible then
+        return not not Overlay._WasVisible;
+    end;
+
+    return not not Overlay.Visible;
+end;
+
 function Library:SyncOverlaysWithMenu(MenuVisible)
+    if Library.KeepOverlaysOpen then
+        return
+    end;
+
     for _, overlay in Library.Overlays do
-        if overlay.SetVisible then
-            if MenuVisible then
-                if Library.AllCloseOverlays then
-                    overlay:SetVisible(true);
-                end;
-            else
-                overlay:SetVisible(false);
+        local function Apply(Bool)
+            if overlay.SetVisible then
+                overlay:SetVisible(Bool);
+            elseif overlay.Outer then
+                overlay.Outer.Visible = Bool;
+                overlay.Visible = Bool;
             end;
-        elseif overlay.Outer then
-            if MenuVisible then
-                if Library.AllCloseOverlays then
-                    overlay.Outer.Visible = true;
-                    overlay.Visible = true;
-                end;
-            else
-                overlay.Outer.Visible = false;
-                overlay.Visible = false;
+        end;
+
+        if MenuVisible then
+            local WasVisible = overlay._HiddenByMenu and overlay._WasVisible;
+            overlay._HiddenByMenu = false;
+
+            if Library.AllCloseOverlays and WasVisible then
+                Apply(true);
             end;
+        else
+            if not overlay._HiddenByMenu then
+                overlay._WasVisible = overlay.Visible;
+            end;
+            overlay._HiddenByMenu = true;
+            Apply(false);
         end;
     end;
 end;
@@ -1648,6 +1723,23 @@ function Library:CreateOverlayWindow(Config)
     local ZIndex = Config.ZIndex or 150;
     local Visible = Config.Visible == true;
     local AccentPart = Config.AccentPart;
+    local OverlayKey = nil;
+    local DefaultPosition = Position;
+    local DefaultVisible = Visible;
+
+    if Config.RememberState ~= false then
+        OverlayKey = tostring(Config.Key or Title);
+
+        local Saved = Library:GetSavedOverlayState(OverlayKey);
+        if Saved then
+            if Saved.Position then
+                Position = Saved.Position;
+            end;
+            if Saved.Visible ~= nil then
+                Visible = Saved.Visible;
+            end;
+        end;
+    end;
     local ZIndexBase = ZIndex + 10;
     local PreviousOverlayBase = Library.OverlayZIndexBase;
 
@@ -1655,6 +1747,9 @@ function Library:CreateOverlayWindow(Config)
 
     local Overlay = {
         Visible = Visible;
+        Key = OverlayKey;
+        DefaultPosition = DefaultPosition;
+        DefaultVisible = DefaultVisible;
         Tabs = {};
         Groupboxes = {};
         ZIndexBase = ZIndexBase;
@@ -1735,10 +1830,10 @@ function Library:CreateOverlayWindow(Config)
     });
 
     local function UpdateOverlayTitle()
-        if AccentPart and AccentPart ~= '' then
+        if Library.OverlayTitleAccent and AccentPart and AccentPart ~= '' then
             Library:SetAccentTitle(TitleLabel, Title, AccentPart);
         else
-            Library:SetGradientText(TitleLabel, Title);
+            Library:SetPlainTitle(TitleLabel, Title, Library.OverlayTitleColor);
         end;
     end;
 
@@ -1825,7 +1920,20 @@ function Library:CreateOverlayWindow(Config)
         Outer.Size = UDim2.fromOffset(width, math.max(height, 56));
     end;
 
-    Library:MakeDraggable(Outer, 28);
+    Library:MakeDraggable(Outer, 28, {
+        CanDrag = function()
+            return not Library.OverlaysLocked;
+        end;
+        Adjust = function(Position)
+            if Library.OverlaySnapEnabled then
+                return Library:SnapPosition(Outer, Position);
+            end;
+            return Position;
+        end;
+        OnEnd = function()
+            Library:SaveOverlayLayout();
+        end;
+    });
 
     function Overlay:SetVisible(Bool)
         Overlay.Visible = not not Bool;
@@ -1834,15 +1942,21 @@ function Library:CreateOverlayWindow(Config)
     end;
 
     function Overlay:Show()
+        Overlay._HiddenByMenu = false;
         Overlay:SetVisible(true);
+        Library:SaveOverlayLayout();
     end;
 
     function Overlay:Hide()
+        Overlay._HiddenByMenu = false;
         Overlay:SetVisible(false);
+        Library:SaveOverlayLayout();
     end;
 
     function Overlay:Toggle()
+        Overlay._HiddenByMenu = false;
         Overlay:SetVisible(not Overlay.Visible);
+        Library:SaveOverlayLayout();
     end;
 
     function Overlay:SetTitle(NewTitle, NewAccentPart)
@@ -2318,14 +2432,14 @@ function Library:CreatePlayerListOverlay(Config)
         end);
     end;
 
-    Players.PlayerAdded:Connect(RefreshPlayers);
-    Players.PlayerRemoving:Connect(function(player)
+    Library:GiveSignal(Players.PlayerAdded:Connect(RefreshPlayers));
+    Library:GiveSignal(Players.PlayerRemoving:Connect(function(player)
         enemyPlayers[player] = nil;
         if selectedPlayer == player then
             SelectPlayer(nil);
         end;
         RefreshPlayers();
-    end);
+    end));
 
     TeleportBtn.MouseButton1Click:Connect(function()
         if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild('HumanoidRootPart') then
@@ -3593,24 +3707,60 @@ function Library:GiveSignal(Signal)
 end;
 
 function Library:Unload()
-    for Idx = #Library.Signals, 1, -1 do
-        local Connection = table.remove(Library.Signals, Idx);
-        Connection:Disconnect();
+    if Library.Unloaded then
+        return
     end;
 
-    if Library.OnUnload then
-        Library.OnUnload();
+    Library.Unloaded = true;
+
+    pcall(function()
+        Library:SaveOverlayLayout(true);
+    end);
+
+    for Idx = #Library.Signals, 1, -1 do
+        local Connection = table.remove(Library.Signals, Idx);
+        pcall(function()
+            Connection:Disconnect();
+        end);
+    end;
+
+    for _, Callback in ipairs(Library.UnloadCallbacks) do
+        local Ok, Err = pcall(Callback);
+        if not Ok then
+            warn('Library:OnUnload callback error: ' .. tostring(Err));
+        end;
     end;
 
     if Library.VelocityGraphOverlay and Library.VelocityGraphOverlay.CleanupDrawings then
-        Library.VelocityGraphOverlay:CleanupDrawings();
+        pcall(function()
+            Library.VelocityGraphOverlay:CleanupDrawings();
+        end);
+    end;
+
+    pcall(function()
+        local Blur = game:GetService('Lighting'):FindFirstChild('ElisiumMenuBlur');
+        if Blur then
+            Blur:Destroy();
+        end;
+    end);
+
+    for _, SoundName in ipairs({ 'ToggleSound', 'NotificationSound', 'SliderSound' }) do
+        local Sound = Library[SoundName];
+        if Sound then
+            pcall(function()
+                Sound:Destroy();
+            end);
+            Library[SoundName] = nil;
+        end;
     end;
 
     ScreenGui:Destroy();
 end;
 
 function Library:OnUnload(Callback)
-    Library.OnUnload = Callback;
+    if type(Callback) == 'function' then
+        table.insert(Library.UnloadCallbacks, Callback);
+    end;
 end;
 
 Library:GiveSignal(ScreenGui.DescendantRemoving:Connect(function(Instance)
@@ -4224,7 +4374,16 @@ do
         ColorPicker:Display();
         ColorPicker.DisplayFrame = DisplayFrame;
 
-        if type(ColorPicker)=="table" and ColorPicker.SetVisible==nil then ColorPicker.SetVisible=function() end end;
+        ColorPicker.Visible = true;
+        function ColorPicker:SetVisible(Bool)
+            Bool = not not Bool;
+            ColorPicker.Visible = Bool;
+            DisplayFrame.Visible = Bool;
+
+            if not Bool then
+                ColorPicker:Hide();
+            end;
+        end;
         Options[Idx] = ColorPicker;
 
         return self;
@@ -4609,7 +4768,16 @@ do
 
         KeyPicker:Update();
 
-        if type(KeyPicker)=="table" and KeyPicker.SetVisible==nil then KeyPicker.SetVisible=function() end end;
+        KeyPicker.Visible = true;
+        function KeyPicker:SetVisible(Bool)
+            Bool = not not Bool;
+            KeyPicker.Visible = Bool;
+            PickOuter.Visible = Bool;
+
+            if not Bool then
+                ModeSelectOuter.Visible = false;
+            end;
+        end;
         Options[Idx] = KeyPicker;
 
         return self;
@@ -6385,7 +6553,7 @@ do
             end;
         end);
 
-        InputService.InputBegan:Connect(function(Input)
+        Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
             if IsPrimaryPress(Input) then
                 local Pos = GetPointerPosition(Input);
                 local AbsPos, AbsSize = ListOuter.AbsolutePosition, ListOuter.AbsoluteSize;
@@ -6396,7 +6564,7 @@ do
                     Dropdown:CloseDropdown();
                 end;
             end;
-        end);
+        end));
 
         Dropdown:BuildDropdownList();
         Dropdown:Display();
@@ -6471,7 +6639,7 @@ do
         });
 
         function Depbox:Resize()
-            Holder.Size = NewUDim2(1, 0, 0, Layout.AbsoluteContentSize.Y);
+            Holder.Size = UDim2.new(1, 0, 0, Layout.AbsoluteContentSize.Y);
 
             Groupbox:Resize();
         end;
@@ -6527,6 +6695,51 @@ do
         table.insert(Library.DependencyBoxes, Depbox);
 
         return Depbox;
+    end;
+
+    for _, AddName in ipairs({ 'AddToggle', 'AddSlider', 'AddRangeSlider', 'AddInput', 'AddDropdown', 'AddButton', 'AddLabel' }) do
+        local Original = Funcs[AddName];
+
+        Funcs[AddName] = function(self, ...)
+            local Container = self.Container;
+            local Before = {};
+
+            for _, Child in next, Container:GetChildren() do
+                Before[Child] = true;
+            end;
+
+            local Element = Original(self, ...);
+            local Frames = {};
+
+            for _, Child in next, Container:GetChildren() do
+                if not Before[Child] and not Child:IsA('UIListLayout') then
+                    table.insert(Frames, Child);
+                end;
+            end;
+
+            if type(Element) == 'table' then
+                Element.Visible = true;
+
+                Element.SetVisible = function(_, Bool)
+                    Bool = not not Bool;
+                    Element.Visible = Bool;
+
+                    for _, Frame in next, Frames do
+                        Frame.Visible = Bool;
+                    end;
+
+                    if not Bool and Element.CloseDropdown then
+                        Element:CloseDropdown();
+                    end;
+
+                    if self.Resize then
+                        self:Resize();
+                    end;
+                end;
+            end;
+
+            return Element;
+        end;
     end;
 
     BaseGroupbox.__index = Funcs;
@@ -6763,13 +6976,27 @@ function Library:SetWatermarkVisibility(Bool)
     Library.Watermark.Visible = Bool;
 end;
 
+function Library:GetWatermarkAccentPart(Text)
+    if Library.WatermarkFullAccent then
+        return Text or '';
+    end;
+
+    local Part = Library.WatermarkAccentPart;
+
+    if not Part or Part == '' or not string.find(Text or '', Part, 1, true) then
+        Part = Library.WatermarkName or '';
+    end;
+
+    return Part;
+end;
+
 function Library:SetWatermark(Text)
     local rawText = Text or '';
     Library.LastWatermarkText = rawText;
 
     local X, Y = Library:GetTextBounds(rawText, Library.Font, 14);
     Library.Watermark.Size = UDim2.new(0, X + 16, 0, (Y * 1.5) + 3);
-    Library:SetAccentTitle(Library.WatermarkText, rawText, Library.WatermarkAccentPart or '.lol');
+    Library:SetAccentTitle(Library.WatermarkText, rawText, Library:GetWatermarkAccentPart(rawText));
 end;
 
 getgenv().elisium_wm = getgenv().elisium_wm or { ping = true, executor = false, fps = true, time = true };
@@ -6802,17 +7029,19 @@ task.spawn(function()
         return execName;
     end;
 
-    RunService.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function(dt)
+    Library:GiveSignal(RunService.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function(dt)
         if dt and dt > 0 then
             local instant = 1 / dt;
             fps = fps + (instant - fps) * 0.1;
         end;
-    end));
+    end)));
 
-    while task.wait(0.5) do
+    local function Rebuild()
         if Library.Watermark and Library.Watermark.Visible then
             local wm = getgenv().elisium_wm or {};
-            local parts = { "Elisium.lol" };
+            local parts = {};
+            local name = Library.WatermarkName;
+            if name and name ~= "" then parts[#parts + 1] = name end;
             if wm.fps ~= false then
                 parts[#parts + 1] = string.format("%d fps", math.floor(fps + 0.5));
             end;
@@ -6828,6 +7057,12 @@ task.spawn(function()
             end;
             Library:SetWatermark(table.concat(parts, " | "));
         end;
+    end;
+
+    Library.RefreshWatermark = Rebuild;
+
+    while task.wait(0.5) and not Library.Unloaded do
+        Rebuild();
     end;
 end);
 
@@ -7070,12 +7305,51 @@ Library.NotificationDefaults = Library.NotificationDefaults or {
     Position = Library.NotificationSpot or 'Top Right';
 };
 
-function Library:Notify(Text, Time, Position)
+local NotificationTypeAliases = {
+    info = 'Info';
+    success = 'Success';
+    ok = 'Success';
+    warning = 'Warning';
+    warn = 'Warning';
+    error = 'Error';
+    err = 'Error';
+};
+
+local function NotificationNoopHandle()
+    local Handle = { Closed = true };
+    function Handle:Dismiss() end;
+    function Handle:SetText() end;
+    function Handle:SetProgress() end;
+    return Handle;
+end;
+
+function Library:NotifyInfo(Text, Time, Position) return Library:Notify(Text, Time, Position, 'Info'); end;
+function Library:NotifySuccess(Text, Time, Position) return Library:Notify(Text, Time, Position, 'Success'); end;
+function Library:NotifyWarning(Text, Time, Position) return Library:Notify(Text, Time, Position, 'Warning'); end;
+function Library:NotifyError(Text, Time, Position) return Library:Notify(Text, Time, Position, 'Error'); end;
+
+function Library:Notify(Text, Time, Position, Type)
+    local Persistent = false;
+
+    if type(Text) == 'table' then
+        local Info = Text;
+        Text = Info.Text;
+        Time = Info.Time or Info.Duration;
+        Position = Info.Position;
+        Type = Info.Type;
+        Persistent = Info.Persistent == true;
+    end;
+
     if self.NotificationsEnabled == false then
-        return;
+        return NotificationNoopHandle();
     end;
 
     Text = tostring(Text or 'Notification');
+
+    Library:PlayNotificationSound();
+
+    local TypeKey = NotificationTypeAliases[string.lower(tostring(Type or 'info'))] or 'Info';
+    local TypeColor = Library.NotificationColors[TypeKey];
 
     if Position then
         self:SetNotificationSpot(Position);
@@ -7084,20 +7358,18 @@ function Library:Notify(Text, Time, Position)
         self:SetNotificationSpot(self.NotificationDefaults.Position);
     end;
 
-    Library:PlayNotificationSound();
-
     local Duration = tonumber(Time) or (self.NotificationDefaults and self.NotificationDefaults.Duration) or 5;
     Duration = math.clamp(Duration, 0.5, 60);
-    local TextSize = 13;
-    local BarHeight = 2;
-    local PadX = 10;
-    local PadY = 6;
 
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, TextSize);
-    local TotalW = math.ceil(XSize + PadX * 2 + 20);
-    local TotalH = math.ceil(YSize + PadY * 2 + BarHeight + 4);
+    local TextSize = 13;
+    local PadX, PadY = 10, 6;
+    local BarHeight = 2;
 
     Library.NotificationIndex = (Library.NotificationIndex or 0) + 1;
+
+    local X, Y = Library:GetTextBounds(Text, Library.Font, TextSize);
+    local TotalW = math.max(math.ceil(X + PadX * 2 + 20), 60);
+    local TotalH = math.ceil(Y + PadY * 2 + BarHeight + 4);
 
     local NotifyOuter = Library:Create('Frame', {
         BackgroundTransparency = 1;
@@ -7123,46 +7395,37 @@ function Library:Notify(Text, Time, Position)
         BorderColor3 = 'OutlineColor';
     }, true);
 
-    local function ApplySize(width, height)
-        TotalW = width;
-        TotalH = height;
-        NotifyOuter.Size = UDim2.fromOffset(TotalW, TotalH);
-    end;
-
-    Library:PlayNotificationEnter(NotifyInner, TotalW);
-
     local NotifyLabel = Library:CreateLabel({
         Position = UDim2.new(0, PadX, 0, PadY);
         Size = UDim2.new(1, -PadX * 2, 1, -(PadY * 2 + BarHeight));
         Text = Text;
-        RichText = true;
+        TextXAlignment = Enum.TextXAlignment.Left;
+        TextYAlignment = Enum.TextYAlignment.Top;
         TextSize = TextSize;
         TextWrapped = false;
         TextTruncate = Enum.TextTruncate.None;
-        TextXAlignment = Enum.TextXAlignment.Left;
-        TextYAlignment = Enum.TextYAlignment.Top;
+        RichText = true;
         ZIndex = 103;
         Parent = NotifyInner;
     });
 
-    Library:AddToRegistry(NotifyLabel, {
-        TextColor3 = 'FontColor';
-    }, true);
+    Library:AddToRegistry(NotifyLabel, { TextColor3 = 'FontColor' }, true);
 
     task.defer(function()
         if not NotifyLabel.Parent then
             return
         end;
 
-        local measuredW = NotifyLabel.TextBounds.X + PadX * 2 + 16;
-        local measuredH = math.max(NotifyLabel.TextBounds.Y + PadY * 2 + BarHeight + 4, TotalH);
-        if measuredW > TotalW then
-            ApplySize(math.ceil(measuredW), measuredH);
+        local MeasuredW = NotifyLabel.TextBounds.X + PadX * 2 + 16;
+        local MeasuredH = math.max(NotifyLabel.TextBounds.Y + PadY * 2 + BarHeight + 4, TotalH);
+        if MeasuredW > TotalW then
+            TotalW = math.ceil(MeasuredW);
+            NotifyOuter.Size = UDim2.fromOffset(TotalW, MeasuredH);
         end;
     end);
 
     local ProgressBar = Library:Create('Frame', {
-        BackgroundColor3 = Library.AccentColor;
+        BackgroundColor3 = TypeColor or Library.AccentColor;
         BorderSizePixel = 0;
         Position = UDim2.new(0, 0, 1, -BarHeight);
         Size = UDim2.new(1, 0, 0, BarHeight);
@@ -7170,21 +7433,91 @@ function Library:Notify(Text, Time, Position)
         Parent = NotifyInner;
     });
 
-    Library:AddToRegistry(ProgressBar, {
-        BackgroundColor3 = 'AccentColor';
-    }, true);
+    if not TypeColor then
+        Library:AddToRegistry(ProgressBar, { BackgroundColor3 = 'AccentColor' }, true);
+    else
+        Library:Create('Frame', {
+            BackgroundColor3 = TypeColor;
+            BorderSizePixel = 0;
+            Size = UDim2.new(0, 3, 1, 0);
+            ZIndex = 104;
+            Parent = NotifyInner;
+        });
+    end;
 
-    TweenService:Create(ProgressBar, TweenInfo.new(Duration, Enum.EasingStyle.Linear), {
-        Size = UDim2.new(0, 0, 0, BarHeight);
-    }):Play();
+    local Closed = false;
+    local ProgressTween = nil;
+    local Handle = { Closed = false };
 
-    task.spawn(function()
-        task.wait(Duration);
+    local function ApplySize(W, H)
+        TotalW = W;
+        NotifyOuter.Size = UDim2.fromOffset(W, H);
+    end;
+
+    local function Close()
+        if Closed then
+            return
+        end;
+
+        Closed = true;
+        Handle.Closed = true;
+
+        if not NotifyOuter.Parent then
+            return
+        end;
 
         Library:PlayNotificationExit(NotifyInner, TotalW, function()
             NotifyOuter:Destroy();
         end);
+    end;
+
+    function Handle:Dismiss()
+        Close();
+    end;
+
+    function Handle:SetText(NewText)
+        if Closed then
+            return
+        end;
+
+        NewText = tostring(NewText or '');
+        NotifyLabel.Text = NewText;
+
+        local NX, NY = Library:GetTextBounds(NewText, Library.Font, TextSize);
+        ApplySize(math.max(math.ceil(NX + PadX * 2 + 20), 60), math.ceil(NY + PadY * 2 + BarHeight + 4));
+    end;
+
+    function Handle:SetProgress(Fraction)
+        if Closed then
+            return
+        end;
+
+        if ProgressTween then
+            ProgressTween:Cancel();
+            ProgressTween = nil;
+        end;
+
+        ProgressBar.Size = UDim2.new(math.clamp(tonumber(Fraction) or 0, 0, 1), 0, 0, BarHeight);
+    end;
+
+    NotifyInner.InputBegan:Connect(function(Input)
+        if IsPrimaryPress(Input) then
+            Close();
+        end;
     end);
+
+    Library:PlayNotificationEnter(NotifyInner, TotalW);
+
+    if not Persistent then
+        ProgressTween = TweenService:Create(ProgressBar, TweenInfo.new(Duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
+            Size = UDim2.new(0, 0, 0, BarHeight);
+        });
+        ProgressTween:Play();
+
+        task.delay(Duration, Close);
+    end;
+
+    return Handle;
 end;
 
 function Library:SetNotificationDefaults(Settings)
@@ -8123,6 +8456,7 @@ function Library:CreateWindow(...)
 
     Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
         local pressed;
+
         if Input.UserInputType == Enum.UserInputType.Keyboard then
             pressed = Input.KeyCode.Name;
         elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -8135,15 +8469,30 @@ function Library:CreateWindow(...)
             return
         end;
 
-        local pickers = Library.MenuBindPickers or {};
+        if InputService:GetFocusedTextBox() then
+            return
+        end;
+
         local bound = false;
-        for _, picker in eli_ipairs(pickers) do
+
+        local function Matches(picker)
             if picker and picker.Value and picker.Value ~= 'None' then
                 bound = true;
-                if picker.Value == pressed then
-                    task.spawn(Library.Toggle);
-                    return
-                end;
+                return picker.Value == pressed;
+            end;
+
+            return false;
+        end;
+
+        if Matches(Library.ToggleKeybind) then
+            task.spawn(Library.Toggle);
+            return
+        end;
+
+        for _, picker in ipairs(Library.MenuBindPickers or {}) do
+            if Matches(picker) then
+                task.spawn(Library.Toggle);
+                return
             end;
         end;
 
@@ -8174,10 +8523,1308 @@ local function OnPlayerChange()
     end;
 end;
 
-Players.PlayerAdded:Connect(OnPlayerChange);
-Players.PlayerRemoving:Connect(OnPlayerChange);
-
+Library:GiveSignal(Players.PlayerAdded:Connect(OnPlayerChange));
+Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
 Library.Toggles = Toggles;
 Library.Options = Options;
+
+-- =====================================================================
+-- Elisium additions: menu keybind helper, overlay layout / lock / snap,
+-- built-in SaveManager and ThemeManager.
+-- =====================================================================
+
+local function HasFileApi()
+    return writefile ~= nil and readfile ~= nil and isfile ~= nil;
+end;
+
+local function EnsureFolder(Path)
+    if not (makefolder and isfolder) then
+        return
+    end;
+
+    local Built = '';
+    for Part in string.gmatch(Path, '[^/\\]+') do
+        Built = (Built == '') and Part or (Built .. '/' .. Part);
+        if not isfolder(Built) then
+            pcall(makefolder, Built);
+        end;
+    end;
+end;
+
+Library.EnsureFolder = EnsureFolder;
+
+-- ---------------------------------------------------------------------
+-- Menu keybind
+-- ---------------------------------------------------------------------
+function Library:SetMenuKeybind(Picker)
+    if type(Picker) == 'string' then
+        Picker = Options[Picker];
+    end;
+
+    table.clear(Library.MenuBindPickers);
+
+    if Picker then
+        table.insert(Library.MenuBindPickers, Picker);
+    end;
+end;
+
+function Library:AddMenuKeybind(Picker)
+    if type(Picker) == 'string' then
+        Picker = Options[Picker];
+    end;
+
+    if Picker and not table.find(Library.MenuBindPickers, Picker) then
+        table.insert(Library.MenuBindPickers, Picker);
+    end;
+end;
+
+-- ---------------------------------------------------------------------
+-- Overlay layout persistence
+-- ---------------------------------------------------------------------
+function Library:GetOverlayLayoutPath()
+    return (Library.Folder or 'Elisium') .. '/overlays.json';
+end;
+
+function Library:LoadOverlayLayout()
+    Library.OverlayLayout = {};
+    Library._OverlayLayoutLoaded = true;
+
+    if not HasFileApi() then
+        return
+    end;
+
+    local Path = Library:GetOverlayLayoutPath();
+
+    local Ok, Data = pcall(function()
+        if isfile(Path) then
+            return HttpService:JSONDecode(readfile(Path));
+        end;
+    end);
+
+    if Ok and type(Data) == 'table' then
+        Library.OverlayLayout = Data;
+    end;
+end;
+
+function Library:GetSavedOverlayState(Key)
+    if not Library._OverlayLayoutLoaded then
+        Library:LoadOverlayLayout();
+    end;
+
+    local Entry = Library.OverlayLayout and Library.OverlayLayout[Key];
+    if type(Entry) ~= 'table' then
+        return nil
+    end;
+
+    local State = {};
+
+    if type(Entry.ox) == 'number' and type(Entry.oy) == 'number' then
+        local SX = tonumber(Entry.sx) or 0;
+        local SY = tonumber(Entry.sy) or 0;
+        local OX, OY = Entry.ox, Entry.oy;
+        local Screen = ScreenGui.AbsoluteSize;
+
+        if Screen.X > 0 and Screen.Y > 0 then
+            if SX == 0 then
+                OX = math.clamp(OX, 0, math.max(Screen.X - 60, 0));
+            end;
+            if SY == 0 then
+                OY = math.clamp(OY, 0, math.max(Screen.Y - 60, 0));
+            end;
+        end;
+
+        State.Position = UDim2.new(SX, OX, SY, OY);
+    end;
+
+    if type(Entry.visible) == 'boolean' then
+        State.Visible = Entry.visible;
+    end;
+
+    return State;
+end;
+
+function Library:SaveOverlayLayout(Immediate)
+    if not HasFileApi() or Library._SavingDisabled then
+        return
+    end;
+
+    if not Library._OverlayLayoutLoaded then
+        Library:LoadOverlayLayout();
+    end;
+
+    local function Write()
+        local Data = Library.OverlayLayout or {};
+
+        for _, Overlay in next, Library.Overlays do
+            if Overlay.Key and Overlay.Outer and Overlay.Outer.Parent then
+                local Pos = Overlay.Outer.Position;
+
+                Data[Overlay.Key] = {
+                    sx = Pos.X.Scale;
+                    ox = Pos.X.Offset;
+                    sy = Pos.Y.Scale;
+                    oy = Pos.Y.Offset;
+                    visible = Library:GetOverlayIntent(Overlay);
+                };
+            end;
+        end;
+
+        Library.OverlayLayout = Data;
+
+        pcall(function()
+            EnsureFolder(Library.Folder or 'Elisium');
+            writefile(Library:GetOverlayLayoutPath(), HttpService:JSONEncode(Data));
+        end);
+    end;
+
+    if Immediate then
+        Write();
+        return
+    end;
+
+    if Library._OverlaySavePending then
+        return
+    end;
+
+    Library._OverlaySavePending = true;
+
+    task.delay(0.4, function()
+        Library._OverlaySavePending = false;
+
+        if not Library.Unloaded then
+            Write();
+        end;
+    end);
+end;
+
+function Library:ResetOverlayLayout()
+    Library.OverlayLayout = {};
+    Library._OverlayLayoutLoaded = true;
+
+    for _, Overlay in next, Library.Overlays do
+        if Overlay.Key and Overlay.Outer and Overlay.Outer.Parent then
+            if Overlay.DefaultPosition then
+                Overlay.Outer.Position = Overlay.DefaultPosition;
+            end;
+
+            Overlay._HiddenByMenu = false;
+
+            if Overlay.SetVisible then
+                Overlay:SetVisible(Overlay.DefaultVisible and true or false);
+            end;
+        end;
+    end;
+
+    Library:SaveOverlayLayout(true);
+end;
+
+function Library:SetFolder(Folder)
+    Library.Folder = tostring(Folder or 'Elisium');
+    Library._OverlayLayoutLoaded = false;
+    Library:LoadOverlayLayout();
+
+    for _, Overlay in next, Library.Overlays do
+        if Overlay.Key and Overlay.Outer and Overlay.Outer.Parent then
+            local Saved = Library:GetSavedOverlayState(Overlay.Key);
+
+            if Saved then
+                if Saved.Position then
+                    Overlay.Outer.Position = Saved.Position;
+                end;
+
+                if Saved.Visible ~= nil and Overlay.SetVisible then
+                    Overlay:SetVisible(Saved.Visible);
+                end;
+            end;
+        end;
+    end;
+end;
+
+-- ---------------------------------------------------------------------
+-- Overlay lock / snap
+-- ---------------------------------------------------------------------
+function Library:SetOverlaysLocked(Locked)
+    Library.OverlaysLocked = not not Locked;
+end;
+
+function Library:SetOverlaySnap(Enabled, Distance)
+    Library.OverlaySnapEnabled = not not Enabled;
+
+    if tonumber(Distance) then
+        Library.OverlaySnapDistance = math.clamp(tonumber(Distance), 2, 60);
+    end;
+end;
+
+function Library:SnapPosition(Instance, Position)
+    local Screen = ScreenGui.AbsoluteSize;
+
+    if Screen.X <= 0 or Screen.Y <= 0 then
+        return Position
+    end;
+
+    local Size = Instance.AbsoluteSize;
+    local Anchor = Instance.AnchorPoint;
+    local Threshold = Library.OverlaySnapDistance or 14;
+
+    local AbsX = Position.X.Scale * Screen.X + Position.X.Offset - Anchor.X * Size.X;
+    local AbsY = Position.Y.Scale * Screen.Y + Position.Y.Offset - Anchor.Y * Size.Y;
+
+    local Others = {};
+
+    for _, Overlay in next, Library.Overlays do
+        local Outer = Overlay.Outer;
+
+        if Outer and Outer ~= Instance and Outer.Parent and Outer.Visible then
+            local OSize = Outer.AbsoluteSize;
+            local OPos = Outer.Position;
+            local OAnchor = Outer.AnchorPoint;
+
+            table.insert(Others, {
+                OPos.X.Scale * Screen.X + OPos.X.Offset - OAnchor.X * OSize.X,
+                OPos.Y.Scale * Screen.Y + OPos.Y.Offset - OAnchor.Y * OSize.Y,
+                OSize.X,
+                OSize.Y,
+            });
+        end;
+    end;
+
+    local function Axis(Absolute, ObjectSize, ScreenSize, Index, CrossStart, CrossSize)
+        local Targets = { 0, ScreenSize - ObjectSize };
+        local Cross = 3 - Index;
+
+        for _, Other in ipairs(Others) do
+            local CrossOtherStart, CrossOtherSize = Other[Cross], Other[Cross + 2];
+
+            if CrossStart < CrossOtherStart + CrossOtherSize + Threshold * 3
+                and CrossStart + CrossSize > CrossOtherStart - Threshold * 3 then
+
+                local Start, Extent = Other[Index], Other[Index + 2];
+
+                table.insert(Targets, Start - ObjectSize);
+                table.insert(Targets, Start + Extent);
+                table.insert(Targets, Start);
+                table.insert(Targets, Start + Extent - ObjectSize);
+            end;
+        end;
+
+        local Best, BestDistance = nil, Threshold + 1;
+
+        for _, Target in ipairs(Targets) do
+            local Distance = math.abs(Absolute - Target);
+
+            if Distance < BestDistance then
+                Best, BestDistance = Target, Distance;
+            end;
+        end;
+
+        if Best then
+            return Best - Absolute;
+        end;
+
+        return 0;
+    end;
+
+    local DeltaX = Axis(AbsX, Size.X, Screen.X, 1, AbsY, Size.Y);
+    local DeltaY = Axis(AbsY, Size.Y, Screen.Y, 2, AbsX, Size.X);
+
+    return UDim2.new(
+        Position.X.Scale, Position.X.Offset + DeltaX,
+        Position.Y.Scale, Position.Y.Offset + DeltaY
+    );
+end;
+
+function Library:BuildOverlaySection(Groupbox)
+    Groupbox:AddToggle('Overlay_Locked', {
+        Text = 'Lock overlay positions';
+        Default = Library.OverlaysLocked;
+        Tooltip = 'Stops overlays from being dragged';
+    });
+
+    Groupbox:AddToggle('Overlay_Snap', {
+        Text = 'Snap overlays';
+        Default = Library.OverlaySnapEnabled;
+        Tooltip = 'Snap to screen edges and to other overlays while dragging';
+    });
+
+    Groupbox:AddToggle('Overlay_KeepOpen', {
+        Text = 'Keep overlays when menu closes';
+        Default = Library.KeepOverlaysOpen;
+        Tooltip = 'Closing the menu only hides the main window';
+    });
+
+    Groupbox:AddToggle('Overlay_AllClose', {
+        Text = 'Restore overlays when menu opens';
+        Default = Library.AllCloseOverlays;
+    });
+
+    Groupbox:AddButton({
+        Text = 'Reset overlay layout';
+        Func = function()
+            Library:ResetOverlayLayout();
+            Library:NotifySuccess('Overlay layout reset', 2);
+        end;
+        DoubleClick = true;
+        Tooltip = 'Moves every overlay back to its default position';
+    });
+
+    Toggles.Overlay_Locked:OnChanged(function(Value)
+        Library:SetOverlaysLocked(Value);
+    end);
+
+    Toggles.Overlay_Snap:OnChanged(function(Value)
+        Library:SetOverlaySnap(Value);
+    end);
+
+    Toggles.Overlay_KeepOpen:OnChanged(function(Value)
+        Library:SetKeepOverlaysOpen(Value);
+    end);
+
+    Toggles.Overlay_AllClose:OnChanged(function(Value)
+        Library:SetAllCloseEnabled(Value);
+    end);
+
+    return Groupbox;
+end;
+
+-- ---------------------------------------------------------------------
+-- SaveManager
+-- ---------------------------------------------------------------------
+local function CleanName(Name)
+    Name = tostring(Name or '');
+    Name = string.gsub(Name, '[^%w%s%-%_]', '');
+    Name = string.gsub(Name, '^%s+', '');
+    Name = string.gsub(Name, '%s+$', '');
+    return Name;
+end;
+
+local SaveManager = {
+    Folder = 'Elisium';
+    Ignore = {};
+    IgnoreTheme = false;
+    AutoSave = false;
+    CurrentConfig = nil;
+    Loading = false;
+};
+
+local SaveParsers = {
+    Toggle = function(Idx, Obj)
+        local Object = Toggles[Idx];
+        if Object and type(Obj.value) == 'boolean' then
+            Object:SetValue(Obj.value);
+        end;
+    end;
+
+    Slider = function(Idx, Obj)
+        local Object = Options[Idx];
+        if Object and type(Obj.value) == 'number' then
+            Object:SetValue(Obj.value);
+        end;
+    end;
+
+    RangeSlider = function(Idx, Obj)
+        local Object = Options[Idx];
+        if Object and type(Obj.lower) == 'number' and type(Obj.upper) == 'number' then
+            Object:SetValue(Obj.lower, Obj.upper);
+        end;
+    end;
+
+    Input = function(Idx, Obj)
+        local Object = Options[Idx];
+        if Object and type(Obj.text) == 'string' then
+            Object:SetValue(Obj.text);
+        end;
+    end;
+
+    Dropdown = function(Idx, Obj)
+        local Object = Options[Idx];
+        if not Object or Object.SpecialType then
+            return
+        end;
+
+        if Object.Multi then
+            Object:SetValue(type(Obj.value) == 'table' and Obj.value or {});
+        elseif type(Obj.value) == 'string' then
+            Object:SetValue(Obj.value);
+        end;
+    end;
+
+    ColorPicker = function(Idx, Obj)
+        local Object = Options[Idx];
+        if Object and type(Obj.hex) == 'string' then
+            Object:SetValueRGB(Color3.fromHex(Obj.hex), tonumber(Obj.transparency));
+        end;
+    end;
+
+    KeyPicker = function(Idx, Obj)
+        local Object = Options[Idx];
+        if Object and type(Obj.key) == 'string' then
+            Object:SetValue({ Obj.key, Obj.mode or 'Toggle' });
+        end;
+    end;
+};
+
+function SaveManager:SetLibrary() end;
+
+function SaveManager:SetFolder(Folder)
+    self.Folder = tostring(Folder);
+end;
+
+function SaveManager:SetIgnoreIndexes(List)
+    for _, Idx in ipairs(List or {}) do
+        self.Ignore[Idx] = true;
+    end;
+end;
+
+function SaveManager:IgnoreThemeSettings()
+    self.IgnoreTheme = true;
+end;
+
+function SaveManager:IsIgnored(Idx)
+    if self.Ignore[Idx] then
+        return true
+    end;
+
+    if string.sub(Idx, 1, 12) == 'SaveManager_' then
+        return true
+    end;
+
+    if self.IgnoreTheme and string.sub(Idx, 1, 6) == 'Theme_' then
+        return true
+    end;
+
+    return false
+end;
+
+function SaveManager:ConfigPath(Name)
+    return self.Folder .. '/configs/' .. CleanName(Name) .. '.json';
+end;
+
+function SaveManager:Serialize()
+    local Objects = {};
+
+    for Idx, Toggle in next, Toggles do
+        if not self:IsIgnored(Idx) then
+            table.insert(Objects, { type = 'Toggle', idx = Idx, value = Toggle.Value });
+        end;
+    end;
+
+    for Idx, Option in next, Options do
+        if not self:IsIgnored(Idx) then
+            local Kind = Option.Type;
+
+            if Kind == 'Slider' then
+                table.insert(Objects, { type = Kind, idx = Idx, value = Option.Value });
+            elseif Kind == 'RangeSlider' then
+                table.insert(Objects, { type = Kind, idx = Idx, lower = Option.ValueLower, upper = Option.ValueUpper });
+            elseif Kind == 'Input' then
+                table.insert(Objects, { type = Kind, idx = Idx, text = Option.Value });
+            elseif Kind == 'Dropdown' then
+                if not Option.SpecialType then
+                    table.insert(Objects, { type = Kind, idx = Idx, value = Option.Multi and Option.Value or (Option.Value or false) });
+                end;
+            elseif Kind == 'ColorPicker' then
+                table.insert(Objects, { type = Kind, idx = Idx, hex = Option.Value:ToHex(), transparency = Option.Transparency });
+            elseif Kind == 'KeyPicker' then
+                table.insert(Objects, { type = Kind, idx = Idx, key = Option.Value, mode = Option.Mode });
+            end;
+        end;
+    end;
+
+    return HttpService:JSONEncode({ objects = Objects });
+end;
+
+function SaveManager:SaveNow(Name)
+    if not HasFileApi() then
+        return false, 'File functions are not available in this executor';
+    end;
+
+    Name = CleanName(Name);
+    if Name == '' then
+        return false, 'Config name is empty';
+    end;
+
+    EnsureFolder(self.Folder .. '/configs');
+
+    local Ok, Err = pcall(function()
+        writefile(self:ConfigPath(Name), self:Serialize());
+    end);
+
+    if not Ok then
+        return false, tostring(Err);
+    end;
+
+    return true;
+end;
+
+-- Save(Name): explicit save. Save(): called by Library:AttemptSave(); only writes
+-- when AutoSave is on and a config is loaded / created (debounced).
+function SaveManager:Save(Name)
+    if self.Loading then
+        return
+    end;
+
+    if Name then
+        return self:SaveNow(Name);
+    end;
+
+    if not (self.AutoSave and self.CurrentConfig) then
+        return
+    end;
+
+    if self._SavePending then
+        return
+    end;
+
+    self._SavePending = true;
+
+    task.delay(0.6, function()
+        self._SavePending = false;
+
+        if not Library.Unloaded and self.AutoSave and self.CurrentConfig then
+            self:SaveNow(self.CurrentConfig);
+        end;
+    end);
+end;
+
+function SaveManager:Load(Name)
+    if not HasFileApi() then
+        return false, 'File functions are not available in this executor';
+    end;
+
+    Name = CleanName(Name);
+    local Path = self:ConfigPath(Name);
+
+    if Name == '' or not isfile(Path) then
+        return false, 'Config does not exist';
+    end;
+
+    local Ok, Data = pcall(function()
+        return HttpService:JSONDecode(readfile(Path));
+    end);
+
+    if not Ok or type(Data) ~= 'table' or type(Data.objects) ~= 'table' then
+        return false, 'Failed to decode config';
+    end;
+
+    self.Loading = true;
+
+    for _, Obj in next, Data.objects do
+        if type(Obj) == 'table' and type(Obj.idx) == 'string' and not self:IsIgnored(Obj.idx) then
+            local Parser = SaveParsers[Obj.type];
+
+            if Parser then
+                pcall(Parser, Obj.idx, Obj);
+            end;
+        end;
+    end;
+
+    self.Loading = false;
+    Library:UpdateDependencyBoxes();
+
+    self.CurrentConfig = Name;
+    return true;
+end;
+
+function SaveManager:Delete(Name)
+    if not (HasFileApi() and delfile) then
+        return false, 'File functions are not available in this executor';
+    end;
+
+    Name = CleanName(Name);
+    local Path = self:ConfigPath(Name);
+
+    if not isfile(Path) then
+        return false, 'Config does not exist';
+    end;
+
+    local Ok, Err = pcall(delfile, Path);
+    if not Ok then
+        return false, tostring(Err);
+    end;
+
+    if self.CurrentConfig == Name then
+        self.CurrentConfig = nil;
+    end;
+
+    if self:GetAutoload() == Name then
+        self:ClearAutoload();
+    end;
+
+    return true;
+end;
+
+function SaveManager:RefreshConfigList()
+    local List = {};
+
+    if listfiles and isfolder then
+        EnsureFolder(self.Folder .. '/configs');
+
+        pcall(function()
+            for _, File in ipairs(listfiles(self.Folder .. '/configs')) do
+                local Name = string.match(File, '([^/\\]+)%.json$');
+
+                if Name then
+                    table.insert(List, Name);
+                end;
+            end;
+        end);
+    end;
+
+    table.sort(List);
+    return List;
+end;
+
+function SaveManager:GetAutoload()
+    if not HasFileApi() then
+        return nil
+    end;
+
+    local Path = self.Folder .. '/configs/autoload.txt';
+
+    if isfile(Path) then
+        local Ok, Name = pcall(readfile, Path);
+        if Ok and Name ~= '' then
+            return Name;
+        end;
+    end;
+
+    return nil
+end;
+
+function SaveManager:SetAutoload(Name)
+    if not HasFileApi() then
+        return false, 'File functions are not available in this executor';
+    end;
+
+    EnsureFolder(self.Folder .. '/configs');
+
+    local Ok, Err = pcall(writefile, self.Folder .. '/configs/autoload.txt', CleanName(Name));
+    if not Ok then
+        return false, tostring(Err);
+    end;
+
+    return true;
+end;
+
+function SaveManager:ClearAutoload()
+    if HasFileApi() and delfile and isfile(self.Folder .. '/configs/autoload.txt') then
+        pcall(delfile, self.Folder .. '/configs/autoload.txt');
+    end;
+end;
+
+function SaveManager:LoadAutoloadConfig()
+    local Name = self:GetAutoload();
+
+    if not Name then
+        return false
+    end;
+
+    local Ok, Err = self:Load(Name);
+
+    if Ok then
+        Library:NotifySuccess('Auto loaded config <b>' .. Name .. '</b>', 3);
+    else
+        Library:NotifyError('Failed to autoload config: ' .. tostring(Err), 4);
+    end;
+
+    return Ok;
+end;
+
+function SaveManager:BuildConfigSection(Tab)
+    local Group = Tab:AddRightGroupbox('Configuration');
+    local Manager = self;
+
+    local function Report(Ok, Err, Message)
+        if Ok then
+            Library:NotifySuccess(Message, 3);
+        else
+            Library:NotifyError(tostring(Err), 4);
+        end;
+    end;
+
+    local function Selected()
+        return Options.SaveManager_ConfigList.Value;
+    end;
+
+    local AutoloadLabel;
+
+    local function UpdateAutoloadLabel()
+        AutoloadLabel:SetText('Autoload: ' .. (Manager:GetAutoload() or 'none'));
+    end;
+
+    local function Refresh()
+        Options.SaveManager_ConfigList:SetValues(Manager:RefreshConfigList());
+        Options.SaveManager_ConfigList:SetValue(nil);
+    end;
+
+    Group:AddInput('SaveManager_ConfigName', { Text = 'Config name', Placeholder = 'my config' });
+
+    Group:AddDropdown('SaveManager_ConfigList', {
+        Text = 'Config list';
+        Values = Manager:RefreshConfigList();
+        AllowNull = true;
+    });
+
+    Group:AddDivider();
+
+    Group:AddButton({
+        Text = 'Create config';
+        Func = function()
+            local Name = CleanName(Options.SaveManager_ConfigName.Value);
+
+            if Name == '' then
+                return Library:NotifyError('Enter a config name first', 3);
+            end;
+
+            local Ok, Err = Manager:SaveNow(Name);
+            if Ok then
+                Manager.CurrentConfig = Name;
+                Refresh();
+            end;
+            Report(Ok, Err, 'Created config <b>' .. Name .. '</b>');
+        end;
+    }):AddButton({
+        Text = 'Load config';
+        Func = function()
+            local Name = Selected();
+            if not Name then
+                return Library:NotifyError('Select a config first', 3);
+            end;
+
+            local Ok, Err = Manager:Load(Name);
+            Report(Ok, Err, 'Loaded config <b>' .. Name .. '</b>');
+        end;
+    });
+
+    Group:AddButton({
+        Text = 'Overwrite config';
+        Func = function()
+            local Name = Selected();
+            if not Name then
+                return Library:NotifyError('Select a config first', 3);
+            end;
+
+            local Ok, Err = Manager:SaveNow(Name);
+            if Ok then
+                Manager.CurrentConfig = Name;
+            end;
+            Report(Ok, Err, 'Overwrote config <b>' .. Name .. '</b>');
+        end;
+        DoubleClick = true;
+    }):AddButton({
+        Text = 'Refresh list';
+        Func = Refresh;
+    });
+
+    Group:AddButton({
+        Text = 'Delete config';
+        Func = function()
+            local Name = Selected();
+            if not Name then
+                return Library:NotifyError('Select a config first', 3);
+            end;
+
+            local Ok, Err = Manager:Delete(Name);
+            if Ok then
+                Refresh();
+                UpdateAutoloadLabel();
+            end;
+            Report(Ok, Err, 'Deleted config <b>' .. Name .. '</b>');
+        end;
+        DoubleClick = true;
+    }):AddButton({
+        Text = 'Set autoload';
+        Func = function()
+            local Name = Selected();
+            if not Name then
+                return Library:NotifyError('Select a config first', 3);
+            end;
+
+            local Ok, Err = Manager:SetAutoload(Name);
+            if Ok then
+                UpdateAutoloadLabel();
+            end;
+            Report(Ok, Err, 'Autoload set to <b>' .. Name .. '</b>');
+        end;
+    });
+
+    Group:AddButton({
+        Text = 'Clear autoload';
+        Func = function()
+            Manager:ClearAutoload();
+            UpdateAutoloadLabel();
+            Library:NotifyInfo('Autoload cleared', 2);
+        end;
+    });
+
+    Group:AddToggle('SaveManager_AutoSave', {
+        Text = 'Autosave loaded config';
+        Default = Manager.AutoSave;
+        Tooltip = 'Writes changes to the config you last loaded or created';
+    });
+
+    Toggles.SaveManager_AutoSave:OnChanged(function(Value)
+        Manager.AutoSave = Value;
+    end);
+
+    AutoloadLabel = Group:AddLabel('Autoload: none');
+    UpdateAutoloadLabel();
+
+    return Group;
+end;
+
+Library.SaveManager = SaveManager;
+
+-- ---------------------------------------------------------------------
+-- ThemeManager
+-- ---------------------------------------------------------------------
+local ThemeKeys = { 'FontColor', 'MainColor', 'BackgroundColor', 'AccentColor', 'OutlineColor' };
+
+local ThemeLabels = {
+    FontColor = 'Text color';
+    MainColor = 'Main color';
+    BackgroundColor = 'Background color';
+    AccentColor = 'Accent color';
+    OutlineColor = 'Outline color';
+};
+
+local function HexTheme(Font, Main, Background, Accent, Outline)
+    return {
+        FontColor = Color3.fromHex(Font);
+        MainColor = Color3.fromHex(Main);
+        BackgroundColor = Color3.fromHex(Background);
+        AccentColor = Color3.fromHex(Accent);
+        OutlineColor = Color3.fromHex(Outline);
+    };
+end;
+
+local ThemeManager = {
+    Folder = 'Elisium';
+    Current = 'Default';
+    Applying = false;
+    BuiltIn = {
+        { 'Default', {
+            FontColor = Library.FontColor;
+            MainColor = Library.MainColor;
+            BackgroundColor = Library.BackgroundColor;
+            AccentColor = Library.AccentColor;
+            OutlineColor = Library.OutlineColor;
+        } },
+        { 'Midnight', HexTheme('EBEBF2', '0D0F16', '08090E', '6C8CFF', '000000') },
+        { 'Ocean', HexTheme('E6F2F5', '0B1418', '071014', '3FC1D9', '000000') },
+        { 'Forest', HexTheme('E8F2EA', '0C120E', '080D0A', '58D68D', '000000') },
+        { 'Crimson', HexTheme('F2E8E8', '120A0A', '0D0707', 'E74C3C', '000000') },
+        { 'Amethyst', HexTheme('F0EAF7', '100C16', '0B0810', 'B57BFF', '000000') },
+        { 'Sunset', HexTheme('F5EEE6', '14100C', '0F0B08', 'FF9F43', '000000') },
+        { 'Mono', HexTheme('F0F0F0', '111111', '0A0A0A', 'D0D0D0', '000000') },
+    };
+};
+
+function ThemeManager:SetLibrary() end;
+
+function ThemeManager:SetFolder(Folder)
+    self.Folder = tostring(Folder);
+end;
+
+function ThemeManager:GetBuiltIn(Name)
+    for _, Entry in ipairs(self.BuiltIn) do
+        if Entry[1] == Name then
+            return Entry[2];
+        end;
+    end;
+end;
+
+function ThemeManager:GetCustomNames()
+    local List = {};
+
+    if listfiles and isfolder then
+        EnsureFolder(self.Folder .. '/themes');
+
+        pcall(function()
+            for _, File in ipairs(listfiles(self.Folder .. '/themes')) do
+                local Name = string.match(File, '([^/\\]+)%.json$');
+
+                if Name then
+                    table.insert(List, Name);
+                end;
+            end;
+        end);
+    end;
+
+    table.sort(List);
+    return List;
+end;
+
+function ThemeManager:GetThemeNames()
+    local Names = {};
+
+    for _, Entry in ipairs(self.BuiltIn) do
+        table.insert(Names, Entry[1]);
+    end;
+
+    for _, Name in ipairs(self:GetCustomNames()) do
+        if not self:GetBuiltIn(Name) then
+            table.insert(Names, Name);
+        end;
+    end;
+
+    return Names;
+end;
+
+function ThemeManager:Apply(Colors)
+    local OldAccent = Library.AccentColor;
+
+    for _, Key in ipairs(ThemeKeys) do
+        if typeof(Colors[Key]) == 'Color3' then
+            Library[Key] = Colors[Key];
+        end;
+    end;
+
+    Library.AccentColorDark = Library:GetDarkerColor(Library.AccentColor);
+    Library.AccentColorLight = Library:GetLighterColor(Library.AccentColor);
+
+    if Library.GradientColor == OldAccent then
+        Library.GradientColor = Library.AccentColor;
+    end;
+
+    Library:UpdateColorsUsingRegistry();
+
+    self.Applying = true;
+
+    for _, Key in ipairs(ThemeKeys) do
+        local Picker = Options['Theme_' .. Key];
+
+        if Picker then
+            pcall(function()
+                Picker:SetValueRGB(Library[Key]);
+            end);
+        end;
+    end;
+
+    self.Applying = false;
+end;
+
+function ThemeManager:ApplyByName(Name)
+    local Colors = self:GetBuiltIn(Name);
+
+    if not Colors and HasFileApi() then
+        local Path = self.Folder .. '/themes/' .. CleanName(Name) .. '.json';
+
+        if isfile(Path) then
+            local Ok, Data = pcall(function()
+                return HttpService:JSONDecode(readfile(Path));
+            end);
+
+            if Ok and type(Data) == 'table' then
+                Colors = {};
+
+                for _, Key in ipairs(ThemeKeys) do
+                    if type(Data[Key]) == 'string' then
+                        Colors[Key] = Color3.fromHex(Data[Key]);
+                    end;
+                end;
+            end;
+        end;
+    end;
+
+    if not Colors then
+        return false, 'Theme does not exist';
+    end;
+
+    self.Current = Name;
+    self:Apply(Colors);
+    return true;
+end;
+
+function ThemeManager:SaveCustom(Name)
+    if not HasFileApi() then
+        return false, 'File functions are not available in this executor';
+    end;
+
+    Name = CleanName(Name);
+
+    if Name == '' then
+        return false, 'Theme name is empty';
+    end;
+
+    if self:GetBuiltIn(Name) then
+        return false, 'That name is used by a built-in theme';
+    end;
+
+    local Data = {};
+    for _, Key in ipairs(ThemeKeys) do
+        Data[Key] = Library[Key]:ToHex();
+    end;
+
+    EnsureFolder(self.Folder .. '/themes');
+
+    local Ok, Err = pcall(writefile, self.Folder .. '/themes/' .. Name .. '.json', HttpService:JSONEncode(Data));
+    if not Ok then
+        return false, tostring(Err);
+    end;
+
+    self.Current = Name;
+    return true;
+end;
+
+function ThemeManager:DeleteCustom(Name)
+    Name = CleanName(Name);
+
+    if self:GetBuiltIn(Name) then
+        return false, 'Built-in themes cannot be deleted';
+    end;
+
+    local Path = self.Folder .. '/themes/' .. Name .. '.json';
+
+    if not (HasFileApi() and delfile and isfile(Path)) then
+        return false, 'Theme does not exist';
+    end;
+
+    local Ok, Err = pcall(delfile, Path);
+    if not Ok then
+        return false, tostring(Err);
+    end;
+
+    return true;
+end;
+
+function ThemeManager:SetDefault(Name)
+    if not HasFileApi() then
+        return false, 'File functions are not available in this executor';
+    end;
+
+    EnsureFolder(self.Folder .. '/themes');
+
+    local Ok, Err = pcall(writefile, self.Folder .. '/themes/default.txt', tostring(Name));
+    if not Ok then
+        return false, tostring(Err);
+    end;
+
+    return true;
+end;
+
+function ThemeManager:LoadDefault()
+    if HasFileApi() then
+        local Path = self.Folder .. '/themes/default.txt';
+
+        if isfile(Path) then
+            local Ok, Name = pcall(readfile, Path);
+
+            if Ok and Name ~= '' and self:ApplyByName(Name) then
+                return true;
+            end;
+        end;
+    end;
+
+    return false;
+end;
+
+function ThemeManager:ApplyToGroupbox(Groupbox)
+    local Manager = self;
+
+    local function Report(Ok, Err, Message)
+        if Ok then
+            Library:NotifySuccess(Message, 3);
+        else
+            Library:NotifyError(tostring(Err), 4);
+        end;
+    end;
+
+    Groupbox:AddDropdown('Theme_Preset', {
+        Text = 'Theme';
+        Values = Manager:GetThemeNames();
+        Default = Manager:GetBuiltIn(Manager.Current) and Manager.Current or 'Default';
+        Callback = function(Value)
+            if Value then
+                Manager:ApplyByName(Value);
+            end;
+        end;
+    });
+
+    for _, Key in ipairs(ThemeKeys) do
+        Groupbox:AddLabel(ThemeLabels[Key]):AddColorPicker('Theme_' .. Key, {
+            Default = Library[Key];
+            Title = ThemeLabels[Key];
+        });
+
+        Options['Theme_' .. Key]:OnChanged(function(Value)
+            if Manager.Applying or Library[Key] == Value then
+                return
+            end;
+
+            local Colors = {};
+            for _, K in ipairs(ThemeKeys) do
+                Colors[K] = (K == Key) and Value or Library[K];
+            end;
+
+            Manager:Apply(Colors);
+        end);
+    end;
+
+    Groupbox:AddDropdown('Theme_UIFont', {
+        Text = 'UI font';
+        Values = Library:GetUIFontNames();
+        Default = Library.CurrentUIFont;
+        Callback = function(Value)
+            if Value then
+                Library:SetUIFont(Value);
+            end;
+        end;
+    });
+
+    Groupbox:AddDivider();
+    Groupbox:AddInput('Theme_CustomName', { Text = 'Custom theme name', Placeholder = 'my theme' });
+
+    Groupbox:AddButton({
+        Text = 'Save theme';
+        Func = function()
+            local Name = CleanName(Options.Theme_CustomName.Value);
+            local Ok, Err = Manager:SaveCustom(Name);
+
+            if Ok then
+                Options.Theme_Preset:SetValues(Manager:GetThemeNames());
+                Options.Theme_Preset:SetValue(Name);
+            end;
+
+            Report(Ok, Err, 'Saved theme <b>' .. Name .. '</b>');
+        end;
+    }):AddButton({
+        Text = 'Set default';
+        Func = function()
+            local Name = Options.Theme_Preset.Value or 'Default';
+            Report(Manager:SetDefault(Name), 'Could not save default', 'Default theme set to <b>' .. Name .. '</b>');
+        end;
+    });
+
+    Groupbox:AddButton({
+        Text = 'Delete custom theme';
+        Func = function()
+            local Name = Options.Theme_Preset.Value;
+
+            if not Name then
+                return Library:NotifyError('Select a theme first', 3);
+            end;
+
+            local Ok, Err = Manager:DeleteCustom(Name);
+
+            if Ok then
+                Options.Theme_Preset:SetValues(Manager:GetThemeNames());
+                Options.Theme_Preset:SetValue('Default');
+                Manager:ApplyByName('Default');
+            end;
+
+            Report(Ok, Err, 'Deleted theme <b>' .. Name .. '</b>');
+        end;
+        DoubleClick = true;
+    });
+
+    return Groupbox;
+end;
+
+function ThemeManager:ApplyToTab(Tab)
+    return self:ApplyToGroupbox(Tab:AddLeftGroupbox('Theme'));
+end;
+
+Library.ThemeManager = ThemeManager;
+
+
+-- ---------------------------------------------------------------------
+-- Overlay title style / watermark text
+-- ---------------------------------------------------------------------
+function Library:SetOverlayTitleAccent(Enabled)
+    Library.OverlayTitleAccent = not not Enabled;
+
+    for _, Overlay in next, Library.Overlays do
+        if Overlay.UpdateTitle then
+            Overlay.UpdateTitle();
+        end;
+    end;
+end;
+
+function Library:SetOverlayTitleColor(Color)
+    if typeof(Color) == 'Color3' then
+        Library.OverlayTitleColor = Color;
+
+        for _, Overlay in next, Library.Overlays do
+            if Overlay.UpdateTitle then
+                Overlay.UpdateTitle();
+            end;
+        end;
+    end;
+end;
+
+function Library:SetWatermarkName(Name)
+    Name = tostring(Name or '');
+    Name = string.gsub(Name, '[<>]', '');
+    Library.WatermarkName = Name;
+
+    if Library.RefreshWatermark then
+        Library.RefreshWatermark();
+    end;
+end;
+
+function Library:SetWatermarkFullAccent(Enabled)
+    Library.WatermarkFullAccent = not not Enabled;
+
+    if Library.RefreshWatermark then
+        Library.RefreshWatermark();
+    end;
+end;
+
+function Library:BuildWatermarkSection(Groupbox)
+    local WM = getgenv().elisium_wm or {};
+    getgenv().elisium_wm = WM;
+
+    Groupbox:AddToggle('Watermark_Visible', {
+        Text = 'Show watermark';
+        Default = Library.Watermark and Library.Watermark.Visible or false;
+    });
+
+    Groupbox:AddInput('Watermark_Name', {
+        Text = 'Watermark text';
+        Default = Library.WatermarkName;
+        Placeholder = 'Your text here';
+        MaxLength = 40;
+    });
+
+    Groupbox:AddToggle('Watermark_FullAccent', {
+        Text = 'Whole watermark in accent color';
+        Default = Library.WatermarkFullAccent;
+        Tooltip = 'Off: only your text is accent colored, fps / ping / time stay white';
+    });
+
+    Groupbox:AddToggle('Watermark_FPS', { Text = 'Show fps', Default = WM.fps ~= false });
+    Groupbox:AddToggle('Watermark_Ping', { Text = 'Show ping', Default = WM.ping ~= false });
+    Groupbox:AddToggle('Watermark_Time', { Text = 'Show time', Default = WM.time ~= false });
+    Groupbox:AddToggle('Watermark_Executor', { Text = 'Show executor', Default = WM.executor == true });
+
+    local function Refresh()
+        if Library.RefreshWatermark then
+            Library.RefreshWatermark();
+        end;
+    end;
+
+    Toggles.Watermark_Visible:OnChanged(function(Value)
+        Library:SetWatermarkVisibility(Value);
+        Refresh();
+    end);
+
+    Options.Watermark_Name:OnChanged(function(Value)
+        Library:SetWatermarkName(Value);
+    end);
+
+    Toggles.Watermark_FullAccent:OnChanged(function(Value)
+        Library:SetWatermarkFullAccent(Value);
+    end);
+
+    for Idx, Field in next, { Watermark_FPS = 'fps', Watermark_Ping = 'ping', Watermark_Time = 'time', Watermark_Executor = 'executor' } do
+        Toggles[Idx]:OnChanged(function(Value)
+            WM[Field] = Value;
+            Refresh();
+        end);
+    end;
+
+    return Groupbox;
+end;
 
 return Library;
